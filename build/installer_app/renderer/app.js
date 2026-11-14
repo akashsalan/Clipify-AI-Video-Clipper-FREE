@@ -278,6 +278,7 @@ const $ = (id) => {
       // clipifymusic:// is same-origin from the page, so the strict CSP allows it.
       this.audio.src = `clipifymusic://track/${encodeURIComponent(track.file)}`;
       this.audio.load();
+      this.audio.muted = Boolean(this.muted);
       this.audio.volume = this.muted ? 0 : this.volume;
       if (autoplay) this.play();
       this.paint();
@@ -293,7 +294,8 @@ const $ = (id) => {
 
     play() {
       if (!this.tracks.length) return;
-      if (this.muted) { this.playing = false; this.paint(); return; }
+      this.audio.volume = this.muted ? 0 : this.volume;
+      this.audio.muted = Boolean(this.muted);
       this.playing = true;
       this.armed = true;
       const attempt = this.audio.play();
@@ -322,19 +324,17 @@ const $ = (id) => {
     },
 
     setMuted(value) {
-      this.muted = value;
+      this.muted = Boolean(value);
       try {
-        localStorage.setItem('clipify.music.muted', value ? '1' : '0');
+        localStorage.setItem('clipify.music.muted', this.muted ? '1' : '0');
       } catch {
         /* ignore */
       }
-      // Always restore the real level on unmute - otherwise the player stays
-      // silent forever, because mute is implemented as volume 0.
+      // Never pause the track on mute: keep the track playing silently so the
+      // music keeps its timeline and unmuting resumes seamlessly without restarting or freezing.
+      this.audio.muted = this.muted;
       this.audio.volume = this.muted ? 0 : this.volume;
-      if (value) {
-        this.audio.pause();
-        this.playing = false;
-      } else if (this.armed) {
+      if (!this.muted && this.armed && this.audio.paused) {
         this.play();
       }
       this.paint();
@@ -938,38 +938,38 @@ const $ = (id) => {
     $('install-subtask').textContent = statusText;
     $('current-item').textContent = operation;
 
+    const curPhase = data.phaseId || activePhaseId || (state.phases && (state.phases.find((p) => p.status === 'running') || {}).id);
     const hasActiveTransfer = Boolean(data.bytesTotal && data.bytesTotal > 0);
     const hasSpeed = Boolean(data.speedBytes && data.speedBytes > 0);
-    const curPhase = activePhaseId || (state.phases && (state.phases.find((p) => p.status === 'running') || {}).id);
 
     // 1. Transfer speed
-    if (hasActiveTransfer && hasSpeed) {
-      $('stat-speed').textContent = `${formatBytes(data.speedBytes)}/s`;
-    } else if (hasSpeed) {
+    if (hasSpeed) {
       $('stat-speed').textContent = `${formatBytes(data.speedBytes)}/s`;
     } else if (hasActiveTransfer) {
-      $('stat-speed').textContent = 'Connecting…';
+      $('stat-speed').textContent = curPhase === 'runtime' ? 'Installing…' : 'Connecting…';
     } else if (curPhase === 'runtime') {
       $('stat-speed').textContent = 'Installing…';
-    } else if (curPhase === 'files' || curPhase === 'python' || curPhase === 'models') {
-      $('stat-speed').textContent = 'Processing…';
+    } else if (curPhase === 'files' || curPhase === 'python') {
+      $('stat-speed').textContent = 'Extracting…';
+    } else if (curPhase === 'models') {
+      $('stat-speed').textContent = 'Pulling…';
     } else {
       $('stat-speed').textContent = 'Active';
     }
 
     // 2. Received
-    if (hasActiveTransfer) {
-      $('stat-done').textContent = formatBytes(data.bytesDone);
-    } else if (data.bytesDone && data.bytesDone > 0) {
+    if (data.bytesDone && data.bytesDone > 0) {
       $('stat-done').textContent = formatBytes(data.bytesDone);
     } else if (curPhase === 'runtime') {
-      $('stat-done').textContent = 'In progress';
+      $('stat-done').textContent = 'Packages…';
+    } else if (curPhase === 'models') {
+      $('stat-done').textContent = '0 B';
     } else {
       $('stat-done').textContent = 'In progress';
     }
 
     // 3. Transfer size
-    if (hasActiveTransfer) {
+    if (data.bytesTotal && data.bytesTotal > 0) {
       $('stat-total').textContent = formatBytes(data.bytesTotal);
     } else if (curPhase === 'runtime') {
       $('stat-total').textContent = '~2.4 GB';
@@ -978,7 +978,7 @@ const $ = (id) => {
     } else if (curPhase === 'files') {
       $('stat-total').textContent = '~297 MB';
     } else if (curPhase === 'models') {
-      $('stat-total').textContent = '~2.2 GB';
+      $('stat-total').textContent = '~5.2 GB';
     } else {
       $('stat-total').textContent = '—';
     }

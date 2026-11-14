@@ -106,17 +106,34 @@ const OLLAMA_URL = 'https://ollama.com/download/OllamaSetup.exe';
 
 /** Approximate download sizes, used only for ETA and disk checks. */
 const MODEL_BYTES = {
-  'qwen3:8b': 5.2 * 1024 ** 3,
-  'qwen3:4b': 2.6 * 1024 ** 3,
-  'qwen3:14b': 9.0 * 1024 ** 3,
-  'dolphin3:8b': 5.2 * 1024 ** 3,
+  'qwen2.5:3b': 1929912432,
+  'qwen2.5:7b': 4.7 * 1024 ** 3,
+  'qwen3:4b': 2.5 * 1024 ** 3,
+  'qwen3:8b': 5.23 * 1024 ** 3,
+  'qwen3:14b': 9.28 * 1024 ** 3,
+  'qwen3:32b': 20.2 * 1024 ** 3,
+  'gemma3:4b': 3.34 * 1024 ** 3,
+  'gemma3:12b': 8.15 * 1024 ** 3,
+  'llama3.1:8b': 4.92 * 1024 ** 3,
+  'dolphin3:8b': 4.92 * 1024 ** 3,
+  'mistral:7b': 4.37 * 1024 ** 3,
+  'deepseek-r1:8b': 5.23 * 1024 ** 3,
+  'phi4:14b': 9.05 * 1024 ** 3,
+  'mistral-small:24b': 14.33 * 1024 ** 3,
   'custom-dolphin:latest': 5.0 * 1024 ** 3,
   'my-coder:latest': 5.0 * 1024 ** 3,
-  'dolphin3:8b': 4.92 * 1e9,
-  'dolphin3:latest': 4.92 * 1e9,
   'dolphin-llama3:8b': 4.9 * 1e9,
   'dolphin-mistral:7b': 4.1 * 1e9,
 };
+
+try {
+  const cat = require('../resources/catalog.json');
+  if (cat && Array.isArray(cat.models)) {
+    for (const m of cat.models) {
+      if (m.id && m.sizeBytes) MODEL_BYTES[m.id] = m.sizeBytes;
+    }
+  }
+} catch { /* defaults are fine */ }
 
 // Weights are shares of the user's *waiting time*, not of the work done.
 // The model pull is by far the longest step (multi-GB over the network), so
@@ -412,6 +429,7 @@ class Installer extends EventEmitter {
     if (this.byteSample && Date.now() - this.byteSample.at > 5000) this.speedBytes = 0;
     this.emit('progress', {
       overall: this.overallPercent(),
+      phaseId: this.activePhaseId,
       task: this.activeTask,
       item: this.activeItem,
       bytesDone: this.bytesDone,
@@ -1023,7 +1041,13 @@ class Installer extends EventEmitter {
     const pipUpgrade = await this.runProcess(
       venvPython,
       ['-m', 'pip', 'install', '--disable-pip-version-check', '--upgrade', 'pip', 'setuptools', 'wheel'],
-      { timeoutMs: 15 * 60 * 1000 }
+      {
+        timeoutMs: 15 * 60 * 1000,
+        onLine: (line) => {
+          const trimmed = line.trim();
+          if (trimmed) this.note(trimmed.slice(0, 160), 'pkg');
+        },
+      }
     );
     if (pipUpgrade.code !== 0) {
       this.finishPhase(id, 'error', 'Python packaging tools could not be prepared');
@@ -1104,6 +1128,11 @@ class Installer extends EventEmitter {
             this.note(`Downloading ${dlMatch[1]} (${dlMatch[2]} ${dlMatch[3]})`, 'pkg');
             this.emitProgress();
           } else if (/^(Collecting|Installing|Building|Using cached|Downloading)/.test(trimmed)) {
+            const clean = trimmed.replace(/\s+/g, ' ');
+            this.note(clean.slice(0, 150), 'pkg');
+            this.activeItem = clean.slice(0, 70);
+            this.emitProgress();
+          } else if (trimmed) {
             const clean = trimmed.replace(/\s+/g, ' ');
             this.note(clean.slice(0, 150), 'pkg');
             this.activeItem = clean.slice(0, 70);
@@ -1560,24 +1589,26 @@ class Installer extends EventEmitter {
         // the ETA had nothing honest to show. Track the byte counts too.
         const handle = (buffer) => {
           let changed = false;
-          for (const line of buffer.toString().split(/\r?\n/)) {
+          for (const line of buffer.toString().split(/[\r\n]+/)) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
             // Narrate the pull at blob granularity. This is the single longest
             // wait in the whole install, so it gets the most explicit feed.
-            const blobName = line.match(/pulling\s+([0-9a-f]{6,})/i);
+            const blobName = trimmed.match(/pulling\s+([0-9a-f]{6,})/i);
             if (blobName) {
               this.note(`blob ${blobName[1].slice(0, 12)} \u2014 transferring weights`, 'blob');
-            } else if (/verifying/i.test(line)) {
+            } else if (/verifying/i.test(trimmed)) {
               this.note('verifying layer checksums', 'blob');
-            } else if (/writing manifest/i.test(line)) {
+            } else if (/writing manifest/i.test(trimmed)) {
               this.note('writing the model manifest', 'blob');
             }
-            const pctMatch = line.match(/(\d{1,3})%/);
+            const pctMatch = trimmed.match(/(\d{1,3})%/);
             if (pctMatch) {
               model.percent = Math.min(99, parseInt(pctMatch[1], 10));
               changed = true;
             }
-            const byteMatch = line.match(
-              /([\d.]+)\s*(B|KB|KiB|MB|MiB|GB|GiB|TB)\s*\/\s*([\d.]+)\s*(B|KB|KiB|MB|MiB|GB|GiB|TB)/
+            const byteMatch = trimmed.match(
+              /([\d.]+)\s*(B|KB|KiB|MB|MiB|GB|GiB|TB)\s*\/\s*([\d.]+)\s*(B|KB|KiB|MB|MiB|GB|GiB|TB)/i
             );
             if (byteMatch) {
               const done = toBytes(byteMatch[1], byteMatch[2]);
@@ -1593,6 +1624,29 @@ class Installer extends EventEmitter {
                 // reports something smaller, so the bar never jumps back.
                 const known = Math.round(MODEL_BYTES[model.id] || 0);
                 this.updateByteProgress(done, Math.max(known, total));
+                changed = true;
+              }
+            }
+            // Parse speed if ollama outputs e.g. "14.2 MB/s"
+            const spdMatch = trimmed.match(/([\d.]+)\s*(B|KB|KiB|MB|MiB|GB|GiB|TB)\/s/i);
+            if (spdMatch) {
+              const spd = toBytes(spdMatch[1], spdMatch[2]);
+              if (spd > 0) {
+                this.speedBytes = Math.round(spd);
+                changed = true;
+              }
+            }
+            // Parse ETA if ollama outputs e.g. "3m20s" or "45s"
+            const etaMatch = trimmed.match(/(\d+m\d+s|\d+s|\d+m)/i);
+            if (etaMatch) {
+              const s = etaMatch[1];
+              let seconds = 0;
+              const m = s.match(/(\d+)m/);
+              const sec = s.match(/(\d+)s/);
+              if (m) seconds += parseInt(m[1], 10) * 60;
+              if (sec) seconds += parseInt(sec[1], 10);
+              if (seconds > 0) {
+                this.pipEtaMs = seconds * 1000;
                 changed = true;
               }
             }

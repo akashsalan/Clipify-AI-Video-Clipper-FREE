@@ -844,6 +844,37 @@ def _load_whisperx_alignment_resource(resource, loader=None, data_find=None, tok
         return tokenizer_factory(language)
 
 
+def _clean_corrupted_hf_cache() -> int:
+    """Detect and remove empty or corrupted json files from Hugging Face hub cache."""
+    import json
+    cleaned = 0
+    hf_hub = os.environ.get("HF_HOME")
+    if hf_hub:
+        hub_dir = Path(hf_hub) / "hub"
+    else:
+        hub_dir = Path.home() / ".cache" / "huggingface" / "hub"
+    if not hub_dir.exists():
+        return 0
+    for path in hub_dir.rglob("*.json"):
+        try:
+            if path.stat().st_size == 0:
+                path.unlink(missing_ok=True)
+                cleaned += 1
+                continue
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if data is None:
+                    path.unlink(missing_ok=True)
+                    cleaned += 1
+        except Exception:
+            try:
+                path.unlink(missing_ok=True)
+                cleaned += 1
+            except Exception:
+                pass
+    return cleaned
+
+
 def transcribe_with_progress(audio_file_path, transcriber):
     """Transcribe with progress tracking and safely handle a ClipsAI/WhisperX alignment edge case."""
     print("Transcribing video...")
@@ -940,10 +971,25 @@ def transcribe_with_progress(audio_file_path, transcriber):
             return aligned
 
         whisperx.align = safe_align
-        transcription = transcriber.transcribe(
-            audio_file_path=audio_file_path,
-            iso6391_lang_code="en",
-        )
+        try:
+            transcription = transcriber.transcribe(
+                audio_file_path=audio_file_path,
+                iso6391_lang_code="en",
+            )
+        except RuntimeError as rt_err:
+            if "json.exception.type_error.305" in str(rt_err) or "cannot use operator[]" in str(rt_err):
+                print("  [Transcribe] Detected corrupted Hugging Face CTranslate2 cache (json.exception.type_error.305).")
+                cleaned = _clean_corrupted_hf_cache()
+                print(f"  [Transcribe] Cleaned {cleaned} corrupted cache file(s). Retrying transcription with fresh model...")
+                fresh_transcriber = create_transcriber(
+                    model_size=os.getenv("TRANSCRIPTION_MODEL", TRANSCRIPTION_MODEL)
+                )
+                transcription = fresh_transcriber.transcribe(
+                    audio_file_path=audio_file_path,
+                    iso6391_lang_code="en",
+                )
+            else:
+                raise
     finally:
         if original_align is not None:
             try:
@@ -5602,6 +5648,10 @@ def process_single_video(
             print(f"  [Transcribe] Saved transcription cache: {os.path.basename(save_p)}")
     except Exception as e:
         print(f"  [FATAL] Transcription phase failed for {vname}: {type(e).__name__}: {e}")
+        if "json.exception.type_error.305" in str(e) or "cannot use operator[]" in str(e):
+            print("  [HINT] Corrupted Hugging Face Whisper model cache detected.")
+            cleaned = _clean_corrupted_hf_cache()
+            print(f"  [HINT] Cleaned {cleaned} corrupted cache file(s). Please retry running the pipeline.")
         return created
 
     # -----------------------------------------------------

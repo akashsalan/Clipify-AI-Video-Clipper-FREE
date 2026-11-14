@@ -29,6 +29,19 @@
       this.backgroundOffset = 0;
       this.keys = new Set();
       this.player = { x: 96, bottom: 0, velocityY: 0, grounded: true, runPhase: 0 };
+      this.particles = [];
+      for (let i = 0; i < 45; i += 1) {
+        this.particles.push({
+          x: Math.random() * 1200,
+          y: Math.random() * 600,
+          size: 3.5 + Math.random() * 4,
+          speedX: 15 + Math.random() * 30,
+          speedY: 28 + Math.random() * 45,
+          rotation: Math.random() * Math.PI * 2,
+          rotationSpeed: (Math.random() - 0.5) * 3,
+          wobble: Math.random() * Math.PI * 2,
+        });
+      }
       try { this.best = Math.max(0, Number(localStorage.getItem('clipify.runner.best')) || 0); }
       catch { this.best = 0; }
       this.syncHud();
@@ -285,6 +298,20 @@
       this.speed = Math.min(475, 290 + Math.floor(this.elapsed / 20) * 18);
       this.backgroundOffset += this.speed * delta;
       this.distance += this.speed * delta;
+
+      if (this.particles && this.particles.length) {
+        for (const p of this.particles) {
+          p.x -= (this.speed * 0.48 + p.speedX) * delta;
+          p.y += p.speedY * delta;
+          p.rotation += p.rotationSpeed * delta;
+          p.wobble += delta * 2.5;
+          p.x += Math.sin(p.wobble) * 10 * delta;
+          if (p.y > (this.groundY || 400) + 15 || p.x < -30) {
+            p.y = -10 - Math.random() * 25;
+            p.x = Math.random() * (this.width + 120);
+          }
+        }
+      }
       this.player.runPhase += delta * (this.speed / 25);
       this.player.velocityY += 1750 * delta;
       this.player.bottom += this.player.velocityY * delta;
@@ -412,10 +439,54 @@
         }
       }
 
-      // Soil bank and the pale path leading through the trees.
-      ctx.fillStyle = night ? '#17281e' : '#49533e';
+      // Seasonal cycle calculation (13,000 points cycle)
+      const cycle = (this.score || 0) % 13000;
+
+      // Soil bank and the pale path leading through the trees (season-reactive).
+      let bankColor = night ? '#17281e' : '#49533e';
+      let pathColor = night ? '#645c45' : '#a18c66';
+      let pebbleColor = night ? 'rgba(221,207,162,.12)' : 'rgba(243,225,181,.25)';
+      let grassLineColor = night ? '#405f43' : '#70815a';
+      let grassAccent1 = '#52724b';
+      let grassAccent2 = '#849565';
+
+      if (cycle >= 2500 && cycle < 4000) {
+        // Full autumn ground: warm rust, amber, autumn foliage earth
+        bankColor = night ? '#2a1a12' : '#5c3920';
+        pathColor = night ? '#593922' : '#946136';
+        pebbleColor = night ? 'rgba(240,160,100,.14)' : 'rgba(235,170,110,.28)';
+        grassLineColor = night ? '#4a2815' : '#854b22';
+        grassAccent1 = '#9e4e1e';
+        grassAccent2 = '#cf762b';
+      } else if (cycle >= 4000 && cycle < 6500) {
+        // Early winter / frosty ground
+        bankColor = night ? '#1b2a33' : '#576c78';
+        pathColor = night ? '#3f5361' : '#889fae';
+        pebbleColor = night ? 'rgba(200,230,250,.18)' : 'rgba(220,240,255,.32)';
+        grassLineColor = night ? '#2d4554' : '#718c9c';
+        grassAccent1 = '#55798e';
+        grassAccent2 = '#9ab4c2';
+      } else if (cycle >= 6500 && cycle < 10000) {
+        // Full snow ground: pure snowy white and pale icy blue
+        bankColor = night ? '#223847' : '#9bbacc';
+        pathColor = night ? '#3b5b6e' : '#cce2ed';
+        pebbleColor = night ? 'rgba(240,250,255,.25)' : 'rgba(255,255,255,.55)';
+        grassLineColor = night ? '#4d768c' : '#e2f1f7';
+        grassAccent1 = '#9fc0d1';
+        grassAccent2 = '#ffffff';
+      } else if (cycle >= 10000 && cycle < 11000) {
+        // Leafless deep winter: barren frozen earth with frost patches
+        bankColor = night ? '#1a2226' : '#464f54';
+        pathColor = night ? '#29353b' : '#69767c';
+        pebbleColor = night ? 'rgba(180,210,225,.12)' : 'rgba(200,225,235,.22)';
+        grassLineColor = night ? '#2f3d44' : '#5e6d73';
+        grassAccent1 = '#445760';
+        grassAccent2 = '#758891';
+      }
+
+      ctx.fillStyle = bankColor;
       ctx.fillRect(0, ground - 15, width, height - ground + 15);
-      ctx.fillStyle = night ? '#645c45' : '#a18c66';
+      ctx.fillStyle = pathColor;
       ctx.beginPath();
       ctx.moveTo(0, ground + 4);
       ctx.lineTo(width, ground + 4);
@@ -423,25 +494,86 @@
       ctx.lineTo(0, height);
       ctx.closePath();
       ctx.fill();
-      ctx.fillStyle = night ? 'rgba(221,207,162,.12)' : 'rgba(243,225,181,.25)';
+      ctx.fillStyle = pebbleColor;
       for (let i = 0; i < 19; i += 1) {
         const x = ((i * 97 - this.backgroundOffset * 0.9) % (width + 30) + width + 30) % (width + 30) - 15;
         const y = ground + 10 + ((i * 19) % Math.max(12, height - ground - 12));
         ctx.beginPath(); ctx.ellipse(x, y, 3 + (i % 3), 1.2, -0.15, 0, Math.PI * 2); ctx.fill();
       }
-      ctx.fillStyle = night ? '#405f43' : '#70815a';
+      ctx.fillStyle = grassLineColor;
       ctx.fillRect(0, ground - 13, width, 3);
       for (let i = 0; i < width / 14 + 2; i += 1) {
         const x = ((i * 14 - this.backgroundOffset) % (width + 18) + width + 18) % (width + 18) - 9;
-        ctx.strokeStyle = i % 2 ? '#52724b' : '#849565';
+        ctx.strokeStyle = i % 2 ? grassAccent1 : grassAccent2;
         ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.moveTo(x, ground - 12); ctx.quadraticCurveTo(x - 3, ground - 21 - (i % 4), x + 1, ground - 25 - (i % 4)); ctx.stroke();
       }
 
       for (const obstacle of this.obstacles) this.drawObstacle(ctx, obstacle);
+      this.drawParticles(ctx);
       this.drawFirefly(ctx);
       if (this.state === 'gameover') {
         this.drawGameOver(ctx, width, height);
+      }
+    }
+
+    drawParticles(ctx) {
+      if (!this.particles || !this.particles.length) return;
+      const cycle = (this.score || 0) % 13000;
+      const night = document.body.dataset.theme === 'night';
+
+      for (const p of this.particles) {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rotation);
+
+        if (cycle < 2500) {
+          // Small green leaves falling synced with speed
+          ctx.fillStyle = night ? '#2f5739' : '#579e53';
+          ctx.beginPath();
+          ctx.ellipse(0, 0, p.size, p.size * 0.52, 0, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (cycle < 4000) {
+          // Small orange shaped leaves falling
+          ctx.fillStyle = night ? '#853215' : '#e06b20';
+          ctx.beginPath();
+          ctx.moveTo(-p.size, 0);
+          ctx.quadraticCurveTo(0, -p.size * 0.75, p.size, 0);
+          ctx.quadraticCurveTo(0, p.size * 0.75, -p.size, 0);
+          ctx.fill();
+        } else if (cycle < 6500) {
+          // Transition: mix of autumn leaves and snow
+          if (p.size % 2 > 0.8) {
+            ctx.fillStyle = night ? '#a3cce3' : '#edf6fc';
+            ctx.beginPath();
+            ctx.arc(0, 0, p.size * 0.45, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.fillStyle = night ? '#853215' : '#e06b20';
+            ctx.beginPath();
+            ctx.ellipse(0, 0, p.size, p.size * 0.52, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        } else if (cycle < 10000) {
+          // Snow falling
+          ctx.fillStyle = night ? '#b8d8ec' : '#f4faff';
+          ctx.beginPath();
+          ctx.arc(0, 0, p.size * 0.52, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (cycle < 11000) {
+          // Deep winter / frost flakes
+          ctx.fillStyle = night ? '#85abc0' : '#d8ebf7';
+          ctx.beginPath();
+          ctx.arc(0, 0, p.size * 0.38, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          // 11000 to 13000: Spring green sprout leaves returning
+          ctx.fillStyle = night ? '#356340' : '#68bf64';
+          ctx.beginPath();
+          ctx.ellipse(0, 0, p.size * 0.9, p.size * 0.48, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
       }
     }
 
@@ -503,18 +635,86 @@
         const by = base - height * (.54 + branch * .11);
         ctx.beginPath(); ctx.moveTo(x, by); ctx.quadraticCurveTo(x + (branch % 2 ? -1 : 1) * height * .15, by - height * .09, x + (branch % 2 ? -1 : 1) * height * .25, by - height * .23); ctx.stroke();
       }
-      const canopyColors = night ? ['#142d25', '#1b3b2e', '#244536'] : ['#2d5140', '#3e6549', '#56734d'];
-      const canopyY = base - height * .83;
-      for (let blob = 0; blob < 8; blob += 1) {
-        const seed = Math.abs((worldIndex + 4) * 17 + blob * 11 + layer * 29);
-        const bx = x + Math.sin(seed * 2.13) * height * .25;
-        const by = canopyY + Math.cos(seed * 1.37) * height * .16;
-        const rx = height * (.13 + (seed % 4) * .018);
-        const ry = height * (.11 + (seed % 3) * .022);
-        ctx.fillStyle = canopyColors[seed % canopyColors.length];
-        ctx.beginPath(); ctx.ellipse(bx, by, rx, ry, Math.sin(seed) * .15, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = night ? 'rgba(147,180,150,.10)' : 'rgba(190,208,145,.16)';
-        ctx.beginPath(); ctx.ellipse(bx - rx * .18, by - ry * .2, rx * .5, ry * .24, -.2, 0, Math.PI * 2); ctx.fill();
+
+      // Seasonal progression based on player score (13,000 points cycle)
+      const cycle = (this.score || 0) % 13000;
+      const treeSeed = Math.abs(Math.sin((worldIndex + 1) * 7919 + (layer + 1) * 3137)) % 1;
+
+      let hasLeaves = true;
+      let canopyColors;
+
+      if (cycle < 1500) {
+        // Normal green and light green trees
+        canopyColors = night ? ['#142d25', '#1b3b2e', '#244536'] : ['#2d5140', '#3e6549', '#56734d', '#437549'];
+      } else if (cycle < 2500) {
+        // After 1500 points: random trees appearing in between current ones with autumn shaded colors
+        const autumnRatio = (cycle - 1500) / 1000;
+        if (treeSeed < autumnRatio) {
+          canopyColors = night ? ['#5a2318', '#6b2d1c', '#7d3820'] : ['#b84224', '#c85a22', '#d97d26', '#9b301c', '#8a2b16'];
+        } else {
+          canopyColors = night ? ['#142d25', '#1b3b2e', '#244536'] : ['#2d5140', '#3e6549', '#56734d'];
+        }
+      } else if (cycle < 4000) {
+        // After 2500 points: ALL trees must be autumn colored (warm reds, amber, orange)
+        canopyColors = night ? ['#5a2318', '#6b2d1c', '#7d3820'] : ['#a8361d', '#c24f21', '#d46f24', '#e08828', '#8f2918'];
+      } else if (cycle < 6500) {
+        // After 4000 points: random trees must be snow themed like blue and light blue
+        const snowRatio = (cycle - 4000) / 2500;
+        if (treeSeed < snowRatio) {
+          canopyColors = night ? ['#1e384d', '#294860', '#385c78'] : ['#3a6984', '#528ea8', '#7ab7cc', '#9fd0e0', '#cbe7f2'];
+        } else {
+          canopyColors = night ? ['#5a2318', '#6b2d1c', '#7d3820'] : ['#a8361d', '#c24f21', '#d46f24', '#e08828'];
+        }
+      } else if (cycle < 8000) {
+        // After 6500 points: ALL trees must be snow themed (blue and light blue)
+        canopyColors = night ? ['#1e384d', '#294860', '#385c78', '#4b7596'] : ['#335d75', '#477e99', '#6ba7c2', '#8ec4dc', '#c2e3f0'];
+      } else if (cycle < 10000) {
+        // After 8000 points: some trees must NOT have leaves (it must be just branches!)
+        const bareRatio = (cycle - 8000) / 2000;
+        if (treeSeed < bareRatio) {
+          hasLeaves = false;
+        } else {
+          canopyColors = night ? ['#1e384d', '#294860', '#385c78'] : ['#335d75', '#477e99', '#6ba7c2', '#8ec4dc', '#c2e3f0'];
+        }
+      } else if (cycle < 11000) {
+        // After 10000 points: ALL trees must be leafless (just branches)
+        hasLeaves = false;
+      } else {
+        // After 11000 points: random trees must have green leaves like the first one
+        const springRatio = (cycle - 11000) / 2000;
+        if (treeSeed < springRatio) {
+          canopyColors = night ? ['#142d25', '#1b3b2e', '#244536'] : ['#2d5140', '#3e6549', '#56734d', '#437549'];
+        } else {
+          hasLeaves = false;
+        }
+      }
+
+      if (hasLeaves) {
+        const canopyY = base - height * .83;
+        for (let blob = 0; blob < 8; blob += 1) {
+          const seed = Math.abs((worldIndex + 4) * 17 + blob * 11 + layer * 29);
+          const bx = x + Math.sin(seed * 2.13) * height * .25;
+          const by = canopyY + Math.cos(seed * 1.37) * height * .16;
+          const rx = height * (.13 + (seed % 4) * .018);
+          const ry = height * (.11 + (seed % 3) * .022);
+          ctx.fillStyle = canopyColors[seed % canopyColors.length];
+          ctx.beginPath(); ctx.ellipse(bx, by, rx, ry, Math.sin(seed) * .15, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = night ? 'rgba(147,180,150,.10)' : 'rgba(190,208,145,.16)';
+          ctx.beginPath(); ctx.ellipse(bx - rx * .18, by - ry * .2, rx * .5, ry * .24, -.2, 0, Math.PI * 2); ctx.fill();
+        }
+      } else {
+        // Bare winter branches without leaves
+        ctx.strokeStyle = night ? '#1b2f28' : '#3d4d42';
+        ctx.lineWidth = Math.max(1, trunkWidth * 0.28);
+        for (let tw = 0; tw < 4; tw += 1) {
+          const twy = base - height * (0.64 + tw * 0.08);
+          const dir = tw % 2 ? -1 : 1;
+          ctx.beginPath();
+          ctx.moveTo(x, twy);
+          ctx.lineTo(x + dir * height * 0.16, twy - height * 0.11);
+          ctx.lineTo(x + dir * height * 0.25, twy - height * 0.20);
+          ctx.stroke();
+        }
       }
       ctx.restore();
     }

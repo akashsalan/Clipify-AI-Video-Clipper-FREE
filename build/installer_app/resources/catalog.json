@@ -43,9 +43,10 @@
       "vram": "~6 GB",
       "speed": "Fast",
       "gpuUseful": true,
-      "recommended": false,
+      "recommended": true,
       "description": "Best balance for high-end systems. High quality clip selection without the wait of larger models.",
-      "bestFor": ["Clip selection", "Metadata", "General AI tasks"]
+      "bestFor": ["Clip selection", "Metadata", "General AI tasks"],
+      "tags": ["8B", "Recommended", "Quality"]
     },
     {
       "id": "qwen3:14b",
