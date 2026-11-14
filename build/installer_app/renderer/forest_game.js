@@ -63,10 +63,10 @@
 
     syncHud() {
       if (this.scoreElement) this.scoreElement.textContent = String(this.score || 0);
-      const scoreVis = typeof document !== 'undefined' ? document.getElementById('game-score-vis') : null;
+      const scoreVis = typeof document !== 'undefined' && typeof document.getElementById === 'function' ? document.getElementById('game-score-vis') : null;
       if (scoreVis) scoreVis.textContent = String(this.score || 0);
       if (this.bestElement) this.bestElement.textContent = String(this.best || 0);
-      const bestVis = typeof document !== 'undefined' ? document.getElementById('game-best-vis') : null;
+      const bestVis = typeof document !== 'undefined' && typeof document.getElementById === 'function' ? document.getElementById('game-best-vis') : null;
       if (bestVis) bestVis.textContent = String(this.best || 0);
     }
 
@@ -243,7 +243,7 @@
     spawnObstacle() {
       const isNight = typeof document !== 'undefined' && document.body && document.body.dataset.theme === 'night';
       const flyerType = isNight ? 'bat' : 'bee';
-      const types = ['log', 'roots', 'rocks', 'thorns', 'branch', flyerType];
+      const types = ['log', 'roots', 'rocks', 'thorns', 'branch', 'trap', flyerType];
       let available = types.filter((type) => type !== this.lastObstacle);
       if (this.elapsed < 4) available = available.filter((type) => !['branch', 'trap'].includes(type));
       const type = available[Math.floor(this.rand() * available.length)] || 'log';
