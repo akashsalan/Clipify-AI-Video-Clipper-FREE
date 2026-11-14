@@ -24,10 +24,16 @@ const WINDOWS_APP_ID = QA_INSTALL_SLUG
   ? `dev.sherlock.clipifyai.setup.qa.${QA_INSTALL_SLUG.toLowerCase().replace(/[^a-z0-9]+/g, '.')}`
   : PRODUCTION_APP_ID;
 
-// Windows groups taskbar windows and shortcuts by AUMID. The executable and
-// window already use the current ICO; without an explicit identity, stale
-// shortcuts or Windows' fallback identity can keep an old taskbar grouping.
-if (process.platform === 'win32') app.setAppUserModelId(WINDOWS_APP_ID);
+// Windows groups taskbar windows and shortcuts by AUMID. For an unpackaged or
+// standalone setup executable that is not yet installed into Start Menu,
+// setting a non-registered AUMID causes Windows Shell to display a generic blank
+// document icon on the taskbar. Binding to process.execPath ensures Windows Shell
+// retrieves the embedded icon resource from the setup binary itself.
+if (process.platform === 'win32') {
+  try {
+    app.setAppUserModelId(QA_INSTALL_SLUG ? WINDOWS_APP_ID : process.execPath);
+  } catch {}
+}
 
 // A packaged QA build keeps its Electron state, installer state, temp files,
 // shortcuts, and default target beside the QA package. This lets smoke tests
@@ -148,12 +154,12 @@ function createWindow() {
   const height = Math.min(780, Math.max(640, workArea.height - 24));
   const { nativeImage } = require('electron');
   const iconCandidates = [
+    path.join(__dirname, 'renderer', 'logo-round.png'),
+    path.join(__dirname, 'renderer', 'logo.png'),
     path.join(process.resourcesPath, 'icon.ico'),
     path.join(process.resourcesPath, 'payload', 'icon.ico'),
     path.join(__dirname, 'build', 'icon.ico'),
     path.join(__dirname, 'resources', 'payload', 'icon.ico'),
-    path.join(__dirname, 'renderer', 'logo-round.png'),
-    path.join(__dirname, 'renderer', 'logo.png'),
   ];
   const iconPath = iconCandidates.find((p) => {
     try { return fs.existsSync(p); } catch { return false; }
@@ -189,8 +195,10 @@ function createWindow() {
     try {
       if (windowIcon && !windowIcon.isEmpty()) {
         mainWindow.setIcon(windowIcon);
+      } else if (iconPath && fs.existsSync(iconPath)) {
+        mainWindow.setIcon(iconPath);
       }
-      if (fs.existsSync(iconPath)) {
+      if (QA_INSTALL_SLUG && fs.existsSync(iconPath)) {
         mainWindow.setAppDetails({ appId: WINDOWS_APP_ID, appIconPath: iconPath });
       }
     } catch (error) {

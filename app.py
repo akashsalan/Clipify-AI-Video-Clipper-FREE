@@ -1553,13 +1553,15 @@ def import_youtube():
             ffmpeg_path = _ffmpeg_path()
             output_template = str(input_dir / "youtube.%(ext)s")
             command = [*yt_dlp_cmd, "--no-playlist", "--no-warnings", "--newline", "--progress",
-                       "--progress-template", "download:[clip-prog] %(progress._percent_str)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.speed)s|%(progress.eta)s",
+                       "--progress-template", "download:[clip-prog] %(progress._percent_str)s|%(progress.downloaded_bytes)s|%(progress.total_bytes|progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s",
                        "--restrict-filenames", "--merge-output-format", "mp4", "--max-filesize", "4G",
                        "--socket-timeout", "20", "--retries", "3", "--fragment-retries", "3",
-                       "--concurrent-fragments", "4",
-                       "-f", "bestvideo[height<=1080][protocol^=http]+bestaudio[protocol^=http]/bestvideo[height<=1080]+bestaudio/best[height<=1080][protocol^=http]/best[height<=1080]/best",
-                       "--ffmpeg-location", str(Path(ffmpeg_path).parent),
-                       "-o", output_template, source_url]
+                       "-f", "bestvideo[height<=1080][protocol^=http][protocol!*=m3u8]+bestaudio[protocol^=http][protocol!*=m3u8]/bestvideo[height<=1080][protocol!*=m3u8]+bestaudio[protocol!*=m3u8]/best[height<=1080][protocol!*=m3u8]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
+                       "--ffmpeg-location", str(Path(ffmpeg_path).parent)]
+            node_binary = shutil.which("node") or shutil.which("node.exe")
+            if node_binary:
+                command.extend(["--js-runtimes", f"node:{node_binary}", "--remote-components", "ejs:github"])
+            command.extend(["-o", output_template, source_url])
             proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                     text=True, encoding="utf-8", errors="replace", bufsize=1,
                                      creationflags=_hidden_creationflags())
@@ -1651,7 +1653,7 @@ def import_youtube():
                         job["stage"] = "Finalizing download"
                         job["detail"] = "Merging video and audio streams…"
 
-                    elif line.startswith("[download]") and "%" in line:
+                    elif "[download]" in line and "%" in line:
                         pct_m = re.search(r"(\d+(?:\.\d+)?)%", line)
                         if pct_m:
                             pct = float(pct_m.group(1))
