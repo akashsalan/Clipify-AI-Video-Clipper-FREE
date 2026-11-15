@@ -226,6 +226,7 @@ class Installer extends EventEmitter {
     // follow the installation drive rather than landing on C:.
     const custom = this.options && this.options.modelsDir;
     if (custom) return path.resolve(custom);
+    if (process.env.OLLAMA_MODELS) return path.resolve(process.env.OLLAMA_MODELS);
     return path.join(this.dataRoot(), MODELS_DIR_NAME);
   }
 
