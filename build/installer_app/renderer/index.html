@@ -318,7 +318,10 @@
           <p id="install-subtask">Preparing&hellip;</p>
         </div>
         <div class="overall">
-          <span class="overall-value" id="overall-percent" data-test="overall-percent">0%</span>
+          <div class="overall-badge">
+            <span class="overall-value" id="overall-percent" data-test="overall-percent">0%</span>
+            <span class="overall-eta" id="overall-eta" data-test="overall-eta">~40–65 mins remaining</span>
+          </div>
         </div>
       </header>
 
@@ -360,11 +363,20 @@
            every pip package, every model blob. -->
       <div class="install-body" id="install-workspace">
         <div class="install-details-view install-left" id="install-details-view">
-          <details class="card card-activity" id="activity-details" data-test="activity" open>
-            <summary><span>Live Console Output</span><span class="activity-count" id="activity-count" data-test="activity-count">0 steps</span></summary>
-            <div class="activity-head"><h3>Live Console</h3><span class="activity-pulse" id="activity-pulse" data-test="activity-pulse" aria-hidden="true"></span><button class="activity-latest" id="activity-latest" type="button" hidden>Latest &#8595;</button></div>
-            <ol class="activity-feed" id="activity-feed" data-test="activity-feed" role="log"></ol>
-          </details>
+          <div class="card card-activity terminal-console-card" id="activity-details" data-test="activity">
+            <div class="terminal-header">
+              <div class="terminal-title-group">
+                <span class="terminal-prompt-icon" aria-hidden="true">&gt;_</span>
+                <span class="terminal-title">Terminal Console</span>
+                <span class="terminal-badge-live"><span class="activity-pulse" id="activity-pulse" data-test="activity-pulse" aria-hidden="true"></span>Live Output</span>
+              </div>
+              <div class="terminal-controls">
+                <span class="activity-count" id="activity-count" data-test="activity-count">0 events</span>
+                <button class="activity-latest" id="activity-latest" type="button" hidden>Latest &#8595;</button>
+              </div>
+            </div>
+            <ol class="activity-feed" id="activity-feed" data-test="activity-feed" role="log" tabindex="0" aria-label="Terminal console output"></ol>
+          </div>
 
           <div class="install-status-grid">
             <div class="card card-tight">

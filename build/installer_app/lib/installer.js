@@ -141,12 +141,12 @@ try {
 // took 55 meant a nine-minute download could only move the bar a few points
 // and it looked frozen even though bytes were streaming in.
 const PHASES = [
-  { id: 'files', label: 'Copying Clipify AI', weight: 5 },
-  { id: 'python', label: 'Preparing the Python engine', weight: 5 },
-  { id: 'runtime', label: 'Installing the AI runtime', weight: 30 },
-  { id: 'ollama', label: 'Setting up the local AI engine', weight: 10 },
-  { id: 'models', label: 'Downloading AI models', weight: 45 },
-  { id: 'shortcuts', label: 'Creating shortcuts', weight: 3 },
+  { id: 'files', label: 'Copying Clipify AI', weight: 4 },
+  { id: 'python', label: 'Preparing the Python engine', weight: 3 },
+  { id: 'runtime', label: 'Installing the AI runtime', weight: 25 },
+  { id: 'ollama', label: 'Setting up the local AI engine', weight: 35 },
+  { id: 'models', label: 'Downloading AI models', weight: 30 },
+  { id: 'shortcuts', label: 'Creating shortcuts', weight: 1 },
   { id: 'verify', label: 'Verifying Clipify AI', weight: 2 },
 ];
 
@@ -410,18 +410,27 @@ class Installer extends EventEmitter {
     for (const phase of PHASES) {
       const entry = this.phaseState[phase.id];
       if (!entry) continue;
-      // A skipped phase is finished work. It used to fall through and add
-      // nothing, which silently stole its weight from the total and left the
-      // bar short of 100% whenever anything was already installed.
-      if (entry.status === 'done' || entry.status === 'skipped') done += phase.weight;
-      else if (entry.status === 'running') {
-        const activeProgressIsUnknown = this.activePhaseId === phase.id
-          && ['runtime', 'ollama', 'verify'].includes(phase.id);
-        if (!activeProgressIsUnknown) done += phase.weight * (entry.percent / 100);
+      // A skipped phase is finished work.
+      if (entry.status === 'done' || entry.status === 'skipped') {
+        done += phase.weight;
+      } else if (entry.status === 'running') {
+        let p = Number(entry.percent);
+        if (!Number.isFinite(p) || p <= 0) {
+          if (this.taskStartedAt && phase.id === 'ollama') {
+            const elapsed = (Date.now() - this.taskStartedAt) / 1000;
+            p = Math.min(95, Math.max(5, Math.round(95 * (1 - Math.exp(-elapsed / 1200)))));
+          } else if (this.taskStartedAt && phase.id === 'runtime') {
+            const elapsed = (Date.now() - this.taskStartedAt) / 1000;
+            p = Math.min(95, Math.max(5, Math.round(95 * (1 - Math.exp(-elapsed / 600)))));
+          } else {
+            p = 10;
+          }
+        }
+        done += phase.weight * (Math.max(0, Math.min(99, p)) / 100);
       }
     }
     const rounded = Math.round(done);
-    return this.installComplete ? Math.min(100, rounded) : Math.min(99, rounded);
+    return this.installComplete ? Math.min(100, rounded) : Math.min(99, Math.max(1, rounded));
   }
 
   emitProgress(extra = {}) {
@@ -439,7 +448,7 @@ class Installer extends EventEmitter {
       taskElapsedMs: this.taskStartedAt ? Date.now() - this.taskStartedAt : 0,
       lastActivityAgoMs: this.lastTaskActivityAt ? Date.now() - this.lastTaskActivityAt : null,
       etaMs: this.etaMs(),
-      determinate: !['runtime', 'ollama', 'verify'].includes(this.activePhaseId),
+      determinate: true,
       phases: PHASES.map((phase) => ({
         id: phase.id,
         label: phase.label,
@@ -456,7 +465,15 @@ class Installer extends EventEmitter {
     if (this.bytesDone <= 0 || this.bytesTotal <= 0 || this.speedBytes <= 0) {
       if (this.activePhaseId === 'runtime') {
         const spent = this.taskStartedAt ? Date.now() - this.taskStartedAt : 0;
-        return Math.max(15000, 240000 - spent);
+        return Math.max(15000, 900000 - spent);
+      }
+      if (this.activePhaseId === 'ollama') {
+        const spent = this.taskStartedAt ? Date.now() - this.taskStartedAt : 0;
+        return Math.max(15000, 2250000 - spent);
+      }
+      if (this.activePhaseId === 'models') {
+        const spent = this.taskStartedAt ? Date.now() - this.taskStartedAt : 0;
+        return Math.max(15000, 1290000 - spent);
       }
       return null;
     }

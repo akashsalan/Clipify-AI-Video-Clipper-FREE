@@ -690,13 +690,36 @@ const $ = (id) => {
   // Must mirror PHASES in lib/installer.js - the engine emits these ids.
   const PHASE_LABELS = [
     { id: 'files', label: 'Copying Clipify AI', est: '~15s', estSeconds: 15 },
-    { id: 'python', label: 'Preparing the Python engine', est: '~25s', estSeconds: 25 },
-    { id: 'runtime', label: 'Installing the AI runtime', est: '~3-5m', estSeconds: 240 },
-    { id: 'ollama', label: 'Setting up the local AI engine', est: '~30s', estSeconds: 30 },
-    { id: 'models', label: 'Downloading AI models', est: '~2-4m', estSeconds: 180 },
+    { id: 'python', label: 'Preparing the Python engine', est: '~30s', estSeconds: 30 },
+    { id: 'runtime', label: 'Installing the AI runtime', est: '~10–20m', estSeconds: 900 },
+    { id: 'ollama', label: 'Setting up the local AI engine', est: '~30–45m', estSeconds: 2250 },
+    { id: 'models', label: 'Downloading AI models', est: '~15–28m', estSeconds: 1290 },
     { id: 'shortcuts', label: 'Creating shortcuts', est: '~5s', estSeconds: 5 },
-    { id: 'verify', label: 'Checking installed components', est: '~15s', estSeconds: 15 },
+    { id: 'verify', label: 'Checking installed components', est: '~20s', estSeconds: 20 },
   ];
+
+  function computeTotalEta() {
+    if (!state.phases || !installStartTime || state.installTerminal) return null;
+    const now = Date.now();
+    let remainingSec = 0;
+    for (const phase of state.phases) {
+      if (phase.status === 'done' || phase.status === 'skipped') continue;
+      const baseSec = phase.estSeconds || 60;
+      if (phase.status === 'running') {
+        const curPhaseElapsed = activePhaseStartedAt ? Math.max(0, (now - activePhaseStartedAt) / 1000) : 0;
+        let phaseRemaining;
+        if (curPhaseElapsed < baseSec * 0.9) {
+          phaseRemaining = Math.max(15, Math.round(baseSec - curPhaseElapsed));
+        } else {
+          phaseRemaining = Math.max(15, Math.round(baseSec * 0.15));
+        }
+        remainingSec += phaseRemaining;
+      } else {
+        remainingSec += baseSec;
+      }
+    }
+    return remainingSec;
+  }
 
   let installElapsedTimer = null;
   let installStartTime = null;
@@ -816,21 +839,23 @@ const $ = (id) => {
       feed.scrollTop = 0;
     }
     activityCount = 0;
-    $('activity-count').textContent = '0 steps';
+    $('activity-count').textContent = '0 events';
     $('activity-latest').hidden = true;
   }
 
   function activityAtBottom(feed) {
-    return feed.scrollHeight - feed.clientHeight - feed.scrollTop <= 20;
+    return feed.scrollHeight - feed.clientHeight - feed.scrollTop <= 30;
   }
 
   function renderActivityFeed() {
     const feed = $('activity-feed');
-    if (!feed || !feed.closest('details').open) return;
+    if (!feed) return;
+    const details = feed.closest('details');
+    if (details && !details.open) return;
     const count = activityEntries.length;
     const scrollTop = feed.scrollTop;
     const first = Math.max(0, Math.floor(scrollTop / ACTIVITY_ROW_HEIGHT) - ACTIVITY_OVERSCAN);
-    const visible = Math.ceil((feed.clientHeight || 104) / ACTIVITY_ROW_HEIGHT) + ACTIVITY_OVERSCAN * 2;
+    const visible = Math.ceil((feed.clientHeight || 113) / ACTIVITY_ROW_HEIGHT) + ACTIVITY_OVERSCAN * 2;
     const last = Math.min(count, first + visible);
     const fragment = document.createDocumentFragment();
 
@@ -843,10 +868,21 @@ const $ = (id) => {
     };
     if (first) fragment.appendChild(spacer(first * ACTIVITY_ROW_HEIGHT));
 
+    const tagLabels = {
+      ok: ' OK ',
+      error: 'ERR ',
+      phase: 'STEP',
+      download: 'DOWN',
+      blob: 'BLOB',
+      pkg: 'PIP ',
+      info: 'INFO',
+      warn: 'WARN',
+    };
+
     for (let index = first; index < last; index += 1) {
       const entry = activityEntries[index];
       const li = document.createElement('li');
-      li.dataset.kind = entry.kind;
+      li.dataset.kind = entry.kind || 'info';
       li.setAttribute('aria-posinset', String(index + 1));
       li.setAttribute('aria-setsize', String(count));
       const when = new Date(entry.at);
@@ -855,11 +891,16 @@ const $ = (id) => {
       time.textContent = [when.getHours(), when.getMinutes(), when.getSeconds()]
         .map((n) => String(n).padStart(2, '0'))
         .join(':');
+
+      const tag = document.createElement('span');
+      tag.className = `a-tag a-tag-${entry.kind || 'info'}`;
+      tag.textContent = tagLabels[entry.kind] || 'INFO';
+
       const text = document.createElement('span');
       text.className = 'a-text';
       text.textContent = entry.text;
       text.title = entry.text;
-      li.append(time, text);
+      li.append(time, tag, text);
       fragment.appendChild(li);
     }
 
@@ -893,16 +934,16 @@ const $ = (id) => {
     if (!entry || !entry.text) return;
     const feed = $('activity-feed');
     if (!feed) return;
-    const wasAtBottom = !feed.closest('details').open || activityAtBottom(feed);
+    const wasAtBottom = activityAtBottom(feed);
     activityEntries.push({
       at: entry.at || Date.now(),
       kind: entry.kind || 'info',
       text: String(entry.text),
     });
     activityCount += 1;
-    $('activity-count').textContent = plural(activityCount, 'step');
+    $('activity-count').textContent = `${activityCount} events`;
     renderActivityFeed();
-    if (wasAtBottom && feed.closest('details').open) {
+    if (wasAtBottom) {
       feed.scrollTop = feed.scrollHeight;
       renderActivityFeed();
     }
@@ -994,7 +1035,12 @@ const $ = (id) => {
       const phaseInfo = PHASE_LABELS.find((p) => p.id === curPhase);
       if (phaseInfo && phaseInfo.estSeconds) {
         const pElapsed = activePhaseStartedAt ? (Date.now() - activePhaseStartedAt) / 1000 : 0;
-        const remainingSec = Math.max(5, Math.round(phaseInfo.estSeconds - pElapsed));
+        let remainingSec;
+        if (pElapsed < phaseInfo.estSeconds * 0.9) {
+          remainingSec = Math.max(15, Math.round(phaseInfo.estSeconds - pElapsed));
+        } else {
+          remainingSec = Math.max(15, Math.round(phaseInfo.estSeconds * 0.15));
+        }
         etaShown = `~${formatDuration(remainingSec * 1000)}`;
       } else {
         etaShown = hasSpeed ? 'Calculating…' : 'In progress';
@@ -1002,42 +1048,51 @@ const $ = (id) => {
     }
     $('stat-eta').textContent = etaShown;
 
-    // The engine reports the weighted overall figure as `overall`. It used to be
-    // read as `data.percent`, which no progress event ever carried, so pct was
-    // always NaN and the readout fell through to showing a word.
-    const pct = Number.isFinite(Number(data.overall))
+    // Overall Total ETA
+    const totalRemainingSec = computeTotalEta();
+    const overallEtaEl = $('overall-eta');
+    if (overallEtaEl) {
+      const totalElapsedSec = installStartTime ? (Date.now() - installStartTime) / 1000 : 0;
+      if (totalElapsedSec < 60) {
+        overallEtaEl.textContent = '~40–65 mins remaining';
+      } else if (Number.isFinite(totalRemainingSec) && totalRemainingSec > 0) {
+        const remMins = Math.round(totalRemainingSec / 60);
+        if (remMins >= 60) {
+          const remHours = Math.floor(remMins / 60);
+          const remModMins = remMins % 60;
+          overallEtaEl.textContent = `~${remHours}h ${remModMins}m remaining`;
+        } else if (remMins > 1) {
+          overallEtaEl.textContent = `~${remMins} mins remaining`;
+        } else {
+          overallEtaEl.textContent = '< 1 min remaining';
+        }
+      } else {
+        overallEtaEl.textContent = 'In progress';
+      }
+    }
+
+    // The engine reports the weighted overall figure as `overall`.
+    // Always display a real determinate percentage, never "Working".
+    let pct = Number.isFinite(Number(data.overall))
       ? Number(data.overall)
       : Number(data.percent);
+    if (!Number.isFinite(pct) || pct <= 0) {
+      pct = lastKnownPercent !== null ? lastKnownPercent : 1;
+    }
+    lastKnownPercent = pct;
+    const roundedPct = Math.max(0, Math.min(99, Math.round(pct)));
     const bar = $('overall-bar');
     const indet = $('overall-indeterminate');
-    if (data.determinate === false) {
-      // Runtime setup has no honest whole-phase percentage. Keep the last
-      // completed-work position, but replace its number with an explicit
-      // in-progress label so a long pip operation cannot look frozen at 5%.
-      $('overall-percent').textContent = 'Working';
-      $('overall-percent').dataset.indeterminate = 'true';
-      indet.hidden = false;
-      moveBuilder(null);
-    } else if (Number.isFinite(pct)) {
-      lastKnownPercent = pct;
-      $('overall-percent').textContent = `${Math.round(pct)}%`;
-      $('overall-percent').dataset.indeterminate = 'false';
-      bar.style.width = `${Math.max(0, Math.min(99, pct))}%`;
-      indet.hidden = true;
-      moveBuilder(Math.max(0, Math.min(99, pct)));
-    } else {
-      // Genuinely unknown: show motion and the last real figure. Never prose -
-      // a percentage readout that says "Working" looks broken.
-      $('overall-percent').textContent =
-        lastKnownPercent === null ? '—' : `${Math.round(lastKnownPercent)}%`;
-      $('overall-percent').dataset.indeterminate = 'true';
-      indet.hidden = false;
-      moveBuilder(null);
-    }
+    $('overall-percent').textContent = `${roundedPct}%`;
+    $('overall-percent').dataset.indeterminate = 'false';
+    bar.style.width = `${roundedPct}%`;
+    indet.hidden = true;
+    moveBuilder(roundedPct);
+
     const aria = $('overall-progress');
-    if (aria && data.determinate !== false && Number.isFinite(pct)) {
-      if (Number.isFinite(pct)) aria.setAttribute('aria-valuenow', String(Math.max(0, Math.min(99, Math.round(pct)))));
-    } else if (aria) aria.removeAttribute('aria-valuenow');
+    if (aria) {
+      aria.setAttribute('aria-valuenow', String(roundedPct));
+    }
     const builder = $('builder');
     if (builder && !builder.classList.contains('done')) {
       const isAdvancing = (data.speedBytes && data.speedBytes > 0) || (quiet < 5000 && data.processRunning !== false);
@@ -1131,6 +1186,8 @@ const $ = (id) => {
     $('error-box').hidden = true;
     $('overall-percent').textContent = '100%';
     $('overall-percent').dataset.indeterminate = 'false';
+    const overallEtaEl = $('overall-eta');
+    if (overallEtaEl) overallEtaEl.textContent = 'Completed';
     $('overall-bar').style.width = '100%';
     $('overall-progress').setAttribute('aria-valuenow', '100');
     $('overall-indeterminate').hidden = true;
@@ -1255,6 +1312,8 @@ const $ = (id) => {
     $('error-box').hidden = true;
     $('btn-retry').hidden = true;
     $('overall-percent').textContent = '0%';
+    const initialEtaEl = $('overall-eta');
+    if (initialEtaEl) initialEtaEl.textContent = '~40–65 mins remaining';
     $('overall-bar').style.width = '0%';
     $('overall-progress').setAttribute('aria-valuenow', '0');
     $('overall-indeterminate').hidden = true;
@@ -1379,13 +1438,16 @@ const $ = (id) => {
     }, { passive: true });
     const activityFeed = $('activity-feed');
     activityFeed.addEventListener('scroll', queueActivityRender, { passive: true });
-    $('activity-details').addEventListener('toggle', () => {
-      if ($('activity-details').open) {
-        renderActivityFeed();
-        activityFeed.scrollTop = activityFeed.scrollHeight;
-        renderActivityFeed();
-      }
-    });
+    const actDetails = $('activity-details');
+    if (actDetails && actDetails.tagName === 'DETAILS') {
+      actDetails.addEventListener('toggle', () => {
+        if (actDetails.open) {
+          renderActivityFeed();
+          activityFeed.scrollTop = activityFeed.scrollHeight;
+          renderActivityFeed();
+        }
+      });
+    }
     $('activity-latest').addEventListener('click', () => {
       activityFeed.scrollTop = activityFeed.scrollHeight;
       renderActivityFeed();
