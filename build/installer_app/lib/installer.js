@@ -1597,31 +1597,42 @@ class Installer extends EventEmitter {
       this.emitProgress();
 
       await new Promise((resolve) => {
-        const child = spawn(exe, ['pull', model.id], { windowsHide: true, shell: false });
+        const child = spawn(exe, ['pull', model.id], {
+          windowsHide: true,
+          shell: false,
+          env: Object.assign({}, process.env, this.appEnv()),
+        });
         this.currentChild = child;
+        let currentBlobId = null;
+        let lastReportedPct = -1;
         // ollama pull prints lines like
         //   pulling 8e297da2  1.2 GB / 4.9 GB  24%
-        // The percentage alone left bytesDone/bytesTotal frozen at whatever the
-        // previous phase happened to leave behind, so the transfer readout and
-        // the ETA had nothing honest to show. Track the byte counts too.
         const handle = (buffer) => {
           let changed = false;
           for (const line of buffer.toString().split(/[\r\n]+/)) {
             const trimmed = line.trim();
             if (!trimmed) continue;
-            // Narrate the pull at blob granularity. This is the single longest
-            // wait in the whole install, so it gets the most explicit feed.
+            // Narrate the pull at blob granularity: log each new blob ONCE.
             const blobName = trimmed.match(/pulling\s+([0-9a-f]{6,})/i);
             if (blobName) {
-              this.note(`blob ${blobName[1].slice(0, 12)} \u2014 transferring weights`, 'blob');
+              const bId = blobName[1].slice(0, 12);
+              if (currentBlobId !== bId) {
+                currentBlobId = bId;
+                this.note(`blob ${bId} \u2014 transferring weights`, 'blob');
+              }
             } else if (/verifying/i.test(trimmed)) {
-              this.note('verifying layer checksums', 'blob');
+              this.throttledNote('ollama-verifying', 'verifying layer checksums', 'blob', 4000);
             } else if (/writing manifest/i.test(trimmed)) {
-              this.note('writing the model manifest', 'blob');
+              this.note('writing the model manifest', 'ok');
             }
             const pctMatch = trimmed.match(/(\d{1,3})%/);
             if (pctMatch) {
-              model.percent = Math.min(99, parseInt(pctMatch[1], 10));
+              const currentPct = parseInt(pctMatch[1], 10);
+              model.percent = Math.min(99, currentPct);
+              if (currentPct !== lastReportedPct && currentPct % 10 === 0) {
+                lastReportedPct = currentPct;
+                this.throttledNote('model-pct', `${model.id}: ${currentPct}% downloaded`, 'download', 2000);
+              }
               changed = true;
             }
             const byteMatch = trimmed.match(
@@ -1635,7 +1646,7 @@ class Installer extends EventEmitter {
                   'blob-bytes',
                   `${byteMatch[1]} ${byteMatch[2]} of ${byteMatch[3]} ${byteMatch[4]} received`,
                   'download',
-                  1500
+                  3000
                 );
                 // Keep the catalogue size as the denominator when ollama
                 // reports something smaller, so the bar never jumps back.
