@@ -281,14 +281,16 @@ button { color: inherit; }
 .terminal-console-card {
   display: flex;
   flex-direction: column;
-  padding: 0;
+  flex-shrink: 0 !important;
+  min-height: 180px !important;
+  height: 180px;
+  padding: 0 !important;
   overflow: hidden;
   background: rgba(11, 23, 17, 0.94);
   border: 1px solid rgba(146, 180, 154, 0.28);
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-  height: 145px;
-  max-height: 145px;
+  box-sizing: border-box;
 }
 .terminal-header {
   display: flex;
@@ -360,16 +362,17 @@ button { color: inherit; }
 .activity-latest:hover { background: rgba(146, 180, 154, 0.22); }
 .activity-feed {
   flex: 1 1 auto;
-  height: 113px;
-  max-height: 113px;
+  height: 146px;
+  max-height: 146px;
+  min-height: 120px;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 4px 10px 6px;
+  padding: 5px 11px 7px;
   margin: 0;
   list-style: none;
   font-family: "Cascadia Code", "Cascadia Mono", Consolas, monospace;
-  font-size: 10.5px;
-  line-height: 1.45;
+  font-size: 11px;
+  line-height: 1.5;
   scrollbar-width: thin;
   scrollbar-color: rgba(146, 180, 154, 0.3) transparent;
 }
@@ -647,8 +650,26 @@ body[data-theme="night"] .theme-icon-night { display: block; }
   min-height: 0;
   gap: 12px;
 }
-.install-details-view { display: flex; min-width: 0; min-height: 0; flex-direction: column; gap: 10px; }
-.install-status-grid { display: grid; min-width: 0; grid-template-columns: minmax(0,1.2fr) minmax(0,.8fr); align-content: start; gap: 10px; }
+.install-details-view {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(146, 180, 154, 0.3) transparent;
+  padding-right: 4px;
+}
+.install-status-grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0,1.2fr) minmax(0,.8fr);
+  align-content: start;
+  gap: 10px;
+  flex-shrink: 0;
+}
 .install-status-grid > .card:first-child { grid-row: span 2; }
 .install-status-grid > .error-box { grid-column: 1 / -1; }
 .install-right, .runner-workspace { min-width: 0; min-height: 0; display: flex; }
