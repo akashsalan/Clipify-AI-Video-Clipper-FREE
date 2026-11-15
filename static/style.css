@@ -800,6 +800,47 @@ label {
   cursor: wait;
 }
 
+.mini-search {
+  flex: 0 0 auto;
+  padding: 0 12px;
+  height: 40px;
+  border: 1px solid rgba(214, 179, 136, 0.4);
+  border-radius: 11px;
+  background: rgba(214, 179, 136, 0.12);
+  color: var(--accent, #d6b388);
+  font-weight: 600;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.mini-search:hover:not(:disabled) {
+  background: rgba(214, 179, 136, 0.22);
+  border-color: rgba(214, 179, 136, 0.6);
+  transform: translateY(-1px);
+}
+
+.mini-search:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.model-picker-narrate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.model-picker-narrate select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .toggle-row {
   display: inline-flex;
   align-items: center;

@@ -131,7 +131,53 @@ $('#useDefaultClipFolder').onclick=async()=>{if(confirm('Go back to the default 
 $('#chooseClipFolder').onclick=()=>{const input=$('#clipFolderInput');input.hidden=false;input.value='';input.focus();};
 $('#clipFolderInput').onkeydown=async e=>{if(e.key!=='Enter')return;e.preventDefault();const value=e.target.value.trim();if(!value)return;await setClipFolder(value);e.target.hidden=true;};
 $('#clipFolderInput').onblur=()=>{$('#clipFolderInput').hidden=true;};
-async function loadModels(){const select=$('#scriptModel');if(!select)return;try{const r=await fetch('/api/models',{cache:'no-store'});const d=await r.json();state.models=d.models||[];if(state.models.length){state.modelAttempts=0;select.innerHTML='<option value="">Auto-select installed model</option>'+state.models.map(model=>`<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`).join('');return;}select.innerHTML='<option value="">No Ollama models found (retrying...)</option>';if(state.modelAttempts<5){state.modelAttempts+=1;setTimeout(loadModels,2000);}}catch(error){select.innerHTML='<option value="">Model service unavailable (retrying...)</option>';if(state.modelAttempts<5){state.modelAttempts+=1;setTimeout(loadModels,2000);}}}
+async function loadModels(){
+  const select=$('#scriptModel');
+  const scanBtn=$('#scanNarrateModelsBtn');
+  if(!select)return;
+  try{
+    const r=await fetch('/api/models',{cache:'no-store'});
+    const d=await r.json();
+    state.models=d.models||[];
+    if(state.models.length){
+      state.modelAttempts=0;
+      if(scanBtn) scanBtn.style.display='none';
+      select.innerHTML='<option value="">Auto-select installed model</option>'+state.models.map(model=>`<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`).join('');
+      return;
+    }
+    if(scanBtn) scanBtn.style.display='inline-flex';
+    select.innerHTML='<option value="">No Ollama models found</option>';
+    if(state.modelAttempts<5){state.modelAttempts+=1;setTimeout(loadModels,2000);}
+  }catch(error){
+    if(scanBtn) scanBtn.style.display='inline-flex';
+    select.innerHTML='<option value="">Model service unavailable</option>';
+    if(state.modelAttempts<5){state.modelAttempts+=1;setTimeout(loadModels,2000);}
+  }
+}
+$('#scanNarrateModelsBtn')?.addEventListener('click', async () => {
+  const btn = $('#scanNarrateModelsBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '🔍 Searching PC…';
+  }
+  try {
+    const res = await fetch('/api/models/scan', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok && data.models && data.models.length) {
+      await loadModels();
+      if (btn) btn.style.display = 'none';
+    } else {
+      alert(data.error || 'No Ollama models found during PC scan.');
+    }
+  } catch (err) {
+    alert('PC scan failed: ' + err.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '🔍 Search PC';
+    }
+  }
+});
 $('#generateScript').onclick=async()=>{const prompt=$('#scriptPrompt').value.trim();if(!prompt){alert('Give the AI a prompt like “funny 15-second gaming joke” or “dramatic reveal with a hook”.');return;}const button=$('#generateScript');button.disabled=true;button.textContent='Working…';try{const r=await fetch('/api/narrate/script',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,duration:targetDuration(),model:$('#scriptModel')?.value||''})});const d=await r.json();if(!r.ok)throw Error(d.error||'Could not generate the script.');const usedAi=Boolean(d.used_ai);setScriptText(d.script,true,usedAi?'Generated with the selected local model.':'Local starter text used; no complete AI draft was returned.');$('#scriptPrompt').value='';}catch(e){alert(e.message)}finally{button.disabled=false;button.textContent='Generate with AI';}};
 $('#randomScript').onclick=async()=>{$('#randomScript').disabled=true;try{const r=await fetch('/api/narrate/random-script',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_duration:targetDuration()})});const d=await r.json();if(!r.ok)throw Error(d.error);const usedAi=Boolean(d.used_ai);setScriptText(d.script,true,usedAi?'Random script generated with the local model.':'Random local starter script used; no complete AI draft was returned.');$('#scriptPrompt').value='';}catch(e){alert(e.message)}finally{$('#randomScript').disabled=false;}};
 $('#presetGrid').onclick=e=>{const b=e.target.closest('.preset');if(!b)return;document.querySelectorAll('.preset').forEach(x=>x.classList.remove('active'));b.classList.add('active');state.mode=b.dataset.preset;};

@@ -521,11 +521,143 @@ def _ollama_models() -> list[str]:
 
 
 def _default_model(models: list[str]) -> str:
-    for preferred in ("qwen2.5:3b", "qwen2.5:latest", "qwen:latest", "qwen3:8b", "qwen3:14b"):
+    for preferred in ("qwen3:8b", "qwen3:4b", "qwen2.5:3b", "qwen2.5:7b", "qwen2.5:latest", "qwen:latest", "qwen3:14b"):
         if preferred in models:
             return preferred
     qwen = [m for m in models if m.lower().startswith("qwen")]
     return qwen[0] if qwen else (models[0] if models else "")
+
+
+def _scan_for_local_ollama_model_stores() -> list[str]:
+    """Scan common locations, environment variables, registry, and local drives for Ollama model stores."""
+    found: list[str] = []
+
+    def check_candidate(cand: str | None) -> None:
+        if not cand:
+            return
+        try:
+            clean = os.path.abspath(os.path.expanduser(str(cand).strip()))
+        except Exception:
+            return
+        if clean in found or not os.path.isdir(clean):
+            return
+        blobs = os.path.join(clean, "blobs")
+        manifests = os.path.join(clean, "manifests")
+        manifests_v2 = os.path.join(clean, "manifests-v2")
+        if (os.path.isdir(blobs) and os.listdir(blobs)) or os.path.isdir(manifests) or os.path.isdir(manifests_v2):
+            found.append(clean)
+
+    # 1. Environment variable
+    check_candidate(os.environ.get("OLLAMA_MODELS"))
+
+    # 2. Windows registry
+    try:
+        import winreg
+        for rk in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            for sub in (r"Environment", r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"):
+                try:
+                    with winreg.OpenKey(rk, sub, 0, winreg.KEY_READ) as k:
+                        val, _ = winreg.QueryValueEx(k, "OLLAMA_MODELS")
+                        check_candidate(val)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # 3. Known paths
+    known_paths = [
+        r"L:\models llma\Ollama\models",
+        os.path.expanduser(r"~/.ollama/models"),
+        r"C:\Users\Dell\.ollama\models",
+    ]
+    for kp in known_paths:
+        check_candidate(kp)
+
+    # 4. Drive scan
+    import string
+    for letter in string.ascii_uppercase:
+        drive_root = f"{letter}:\\"
+        if not os.path.exists(drive_root):
+            continue
+        subpaths = [
+            r"models llma\Ollama\models",
+            r"models llma\models",
+            r"Ollama\models",
+            r".ollama\models",
+            r"ollama_models",
+            r"models",
+        ]
+        for sub in subpaths:
+            cand = os.path.join(drive_root, sub)
+            check_candidate(cand)
+
+    return found
+
+
+def _restart_ollama_with_models_dir(models_dir: str) -> bool:
+    """Safely restart local Ollama pointing directly to the given models directory."""
+    try:
+        subprocess.run(["taskkill", "/F", "/IM", "ollama.exe"], capture_output=True, timeout=5)
+    except Exception:
+        pass
+    import time
+    time.sleep(1)
+
+    binary = shutil.which("ollama") or shutil.which("ollama.exe") or r"C:\Users\Dell\AppData\Local\Programs\Ollama\ollama.exe"
+    if not binary or not os.path.exists(binary):
+        return False
+
+    env = os.environ.copy()
+    env["OLLAMA_MODELS"] = models_dir
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    try:
+        subprocess.Popen([binary, "serve"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         stdin=subprocess.DEVNULL, creationflags=creationflags, start_new_session=True)
+        return True
+    except Exception as exc:
+        print(f"[Ollama] Failed to restart serve: {exc}")
+        return False
+
+
+def _scan_and_recover_ollama_models() -> tuple[list[str], str | None, str | None]:
+    """Scan local storage for Ollama models, activate the store, and refresh."""
+    models, _ = _discover_ollama_models()
+    if models:
+        return models, os.environ.get("OLLAMA_MODELS"), None
+
+    stores = _scan_for_local_ollama_model_stores()
+    if not stores:
+        return [], None, "No Ollama model directories found on your computer."
+
+    for store in stores:
+        resolved = store
+        try:
+            resolved = os.path.realpath(store)
+        except Exception:
+            pass
+
+        blobs_dir = os.path.join(resolved, "blobs")
+        manifests_dir = os.path.join(resolved, "manifests")
+        if not os.path.isdir(blobs_dir) and not os.path.isdir(manifests_dir):
+            continue
+
+        os.environ["OLLAMA_MODELS"] = resolved
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Environment", 0, winreg.KEY_WRITE) as k:
+                winreg.SetValueEx(k, "OLLAMA_MODELS", 0, winreg.REG_SZ, resolved)
+        except Exception:
+            pass
+
+        _restart_ollama_with_models_dir(resolved)
+        import time
+        for _ in range(5):
+            time.sleep(1)
+            models, _ = _discover_ollama_models()
+            if models:
+                return models, resolved, None
+
+    return [], None, "Scanned local drives but could not find working Ollama model manifests."
 
 
 _YOUTUBE_VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
@@ -1138,144 +1270,149 @@ def narrate_media(filename: str):
     return send_from_directory(target.parent, target.name, as_attachment=False)
 
 
-def _strip_reasoning_blocks(raw: str) -> str:
+def _clean_ai_script(raw: str) -> str:
+    """Clean LLM output so it produces clean spoken narration without markdown, labels, or stage directions."""
     text = str(raw or "")
+    # Remove reasoning / think blocks
     text = re.sub(r"<think\b.*?</think>", "", text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"<think\b.*", "", text, flags=re.IGNORECASE | re.DOTALL)
     text = re.sub(r"\n\s*\n\s*(?:analysis|reasoning|thought process|thinking)\s*[:\-]*\n*.*?\n\s*\n", "\n\n", text, flags=re.IGNORECASE | re.DOTALL)
-    text = text.replace("```json", "").replace("```", "").strip()
-    text = text.strip("`\n \t")
-    return text
+    # Remove markdown code blocks
+    text = re.sub(r"```[a-zA-Z0-9_-]*\n?", "", text)
+    text = text.replace("```", "")
+    # Remove markdown formatting (*bold*, **bold**, _italic_, # Header)
+    text = re.sub(r"#+\s*", "", text)
+    text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
+    text = re.sub(r"\*([^*]+)\*", r"\1", text)
+    text = re.sub(r"__([^_]+)__", r"\1", text)
+    text = re.sub(r"_([^_]+)_", r"\1", text)
+    text = text.replace("`", "")
+    # Remove bracketed stage directions e.g. [Laughs], [Music fades], [Sighs]
+    text = re.sub(r"\[[^\]]*\]", "", text)
+    # Remove parenthetical sound effects / directions e.g. (laughs), (dramatic pause)
+    text = re.sub(r"\((?:pause|dramatic pause|laughs?|sighs?|giggles?|music cue|softly|loudly|whispers?|sound\s+effect)[^)]*\)", "", text, flags=re.IGNORECASE)
+    # Remove speaker prefixes: "Narrator:", "Voiceover:", "Host:", "Speaker 1:", "Me:"
+    text = re.sub(r"(?im)^\s*(?:narrator|voice(?:over)?|speaker\s*\d*|host|voice)\s*:\s*", "", text)
+    # Remove title or metadata prefixes: "Title: ...", "Hook: ...", "Script: ..."
+    text = re.sub(r"(?im)^\s*(?:title|script|hook|story|synopsis|metadata)\s*:\s*", "", text)
+    # Remove conversational preamble like "Here is a script:" or "Sure, here's the story:"
+    text = re.sub(r"(?im)^\s*(?:here is|here's|sure(?: thing)?[,!]|certainly[!]|okay[,!]|below is)\s+(?:a|the|your)?\s*(?:viral\s+)?(?:script|narration|story|take)[^\n.:]*[:.]?\s*", "", text)
+    # Strip wrapping quotes
+    text = text.strip()
+    if (text.startswith('"') and text.endswith('"')) or (text.startswith("'") and text.endswith("'")):
+        text = text[1:-1].strip()
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _strip_reasoning_blocks(raw: str) -> str:
+    return _clean_ai_script(raw)
 
 
 def _script_is_complete(script: str) -> bool:
-    text = _strip_reasoning_blocks(script).strip()
+    text = _clean_ai_script(script)
     if not text:
         return False
-    if len(text.split()) < 28:
+    words = text.split()
+    if len(words) < 15:
         return False
-    if re.search(r"(?m)^\s*\[[^\]]+\]\s*$", text):
-        return False
-    if re.search(r"(?im)^\s*(?:\*{1,2}|_{1,2})?\s*(?:narrator|voice(?:over)?|speaker\s*\d*)\b[^\n:]*:", text):
-        return False
-    if re.search(r"[*_`#]", text):
-        return False
-    if re.search(r"(?im)^\s*(?:analysis|reasoning|thought process|thinking|plan|here are|i will)\s*:", text):
-        return False
-    if text.count("...") > 2:
-        return False
-    if re.search(r"(?im)^\s*(?:json|title|metadata?|prompt|story idea)\s*:", text):
-        return False
-    if re.search(r"[.!?][\s\n]*$", text):
-        return True
-    return False
+    return True
 
 
 def _call_ollama_script_prompt(system_prompt: str, user_prompt: str, fallback: str, model: str = "") -> str:
     import urllib.request
 
-    preferred_model = model.strip() or os.getenv("OLLAMA_MODEL", "qwen3:8b").strip()
+    installed = _ollama_models()
+    preferred_model = model.strip()
+    if not preferred_model or preferred_model not in installed:
+        preferred_model = os.getenv("OLLAMA_MODEL", "").strip()
+    if not preferred_model or preferred_model not in installed:
+        preferred_model = _default_model(installed)
+    if not preferred_model and installed:
+        preferred_model = installed[0]
     if not preferred_model:
         return fallback
-    for attempt in range(2):
-        retry_note = (
-            "\n\nRewrite the draft as complete plain spoken narration. Use at least 28 words, "
-            "end with sentence punctuation, and include no headings, speaker labels, stage directions, "
-            "or Markdown. Return only the narration."
-            if attempt else ""
-        )
-        try:
-            payload = json.dumps({
-                "model": preferred_model,
-                "stream": False,
-                "think": False,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt + retry_note},
-                ],
-            }).encode("utf-8")
-            request = urllib.request.Request(
-                f"{OLLAMA_RUNTIME_BASE_URL or _ollama_base_url()}/api/chat",
-                data=payload,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            with urllib.request.urlopen(request, timeout=30) as response:
-                data = json.loads(response.read().decode("utf-8", errors="replace"))
-            cleaned = _strip_reasoning_blocks(str(data.get("message", {}).get("content", "") or ""))
-            if _script_is_complete(cleaned):
-                return cleaned
-        except Exception:
-            break
+
+    base_url = (OLLAMA_RUNTIME_BASE_URL or _ollama_base_url()).rstrip("/")
+    candidates = [preferred_model]
+    for m in installed:
+        if m not in candidates:
+            candidates.append(m)
+
+    for candidate in candidates[:2]:
+        for attempt in range(2):
+            try:
+                payload = json.dumps({
+                    "model": candidate,
+                    "stream": False,
+                    "think": False,
+                    "options": {
+                        "temperature": 0.85,
+                        "top_p": 0.9,
+                    },
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                }).encode("utf-8")
+                request = urllib.request.Request(
+                    f"{base_url}/api/chat",
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=75) as response:
+                    data = json.loads(response.read().decode("utf-8", errors="replace"))
+                raw_content = str(data.get("message", {}).get("content", "") or "")
+                cleaned = _clean_ai_script(raw_content)
+                if _script_is_complete(cleaned):
+                    if not re.search(r"[.!?]$", cleaned):
+                        cleaned += "."
+                    return cleaned
+            except Exception as exc:
+                print(f"[Ollama Script] Model {candidate} attempt {attempt} error: {exc}")
+                break
     return fallback
 
 
 def _prompt_fallback(prompt: str, style: str, duration: int = 30) -> str:
     prompt_lower = prompt.lower()
-    if "school" in prompt_lower and ("16" in prompt_lower or "sixteen" in prompt_lower):
-        return (
-            "At sixteen, I thought the hardest part of school was passing the test.\n\n"
-            "Then our teacher asked one simple question, and I confidently gave the exact wrong answer. "
-            "The whole room went silent for two seconds before my friend started laughing so hard they dropped their pencil. "
-            "I tried to save myself with a joke, but accidentally made the teacher laugh too.\n\n"
-            "So I did not pass the test, but I definitely passed the embarrassment to the entire class."
-        )
-    if "siddharth" in prompt_lower and ("rejected" in prompt_lower or "girls" in prompt_lower):
-        if duration <= 27:
-            return (
-                "Siddharth had been rejected so many times, he treated it like a routine.\n\n"
-                "His friends told him to give up, but he tried one last time and expected another no. "
-                "Instead, she laughed and said yes. After all those rejections, Siddharth finally learned the problem was not his confidence. "
-                "He had been asking the wrong people."
-            )
-        return (
-            "Siddharth had been rejected so many times, he started treating it like a daily routine.\n\n"
-            "Every time he tried to talk to a girl, the answer was the same: no chance. His friends kept telling him to give up, "
-            "but Siddharth decided to try one last time. He walked over, said exactly what he wanted to say, and waited for the rejection.\n\n"
-            "But this time, she laughed and said yes. After all those rejections, Siddharth finally realized the problem was not his confidence. "
-            "He had just been asking the wrong people."
-        )
-    if "joshua" in prompt_lower and "bullied" in prompt_lower:
-        return (
-            "Joshua kept his head down whenever the same group waited for him outside class. "
-            "One afternoon, they took his backpack and dumped everything across the hallway while everyone watched. "
-            "Joshua picked up his things, walked to the teacher, and calmly explained exactly what had happened. "
-            "The hallway went silent when the teacher checked the cameras and called the group back. "
-            "For the first time, Joshua did not have to defend himself because the truth had already done it."
-        )
     subject = prompt.strip().rstrip(".!?")
     subject = re.sub(r"\([^)]*\)", "", subject).strip()
-    subject = re.sub(r"\b(make it|write|create|generate|actually happened|actually happened|a dramatic story about|a story about)\b", "", subject, flags=re.I).strip(" ,:-")
+    subject = re.sub(r"\b(make it|write|create|generate|actually happened|a dramatic story about|a story about)\b", "", subject, flags=re.I).strip(" ,:-")
+    if not subject:
+        subject = "that wild plan"
+
+    viral_templates = [
+        f"Nobody expected {subject} to blow up the way it did. It started as an ordinary moment, but then one mistake flipped everything upside down. By the time anyone tried to intervene, it was already too late to stop the chain reaction. In the end, what seemed like a disaster turned out to be the most memorable thing that happened all year.",
+        f"If you told me yesterday that {subject} would end like this, I would have laughed in your face. The entire setup was supposed to be completely foolproof. But five seconds in, the first unexpected thing happened, and the panic was instantly contagious. It took everyone watching by complete surprise, and honestly, the payoff could not have been better.",
+        f"Here is what they never tell you about {subject}. From the outside, everything looked totally calm and under control. But behind the scenes, every single choice was making the situation ten times more chaotic. When the final reveal dropped, the entire room erupted. You truly could not make this up.",
+    ]
+    funny_templates = [
+        f"I thought {subject} was going to be an easy win, but reality had completely different plans. The first mistake was subtle enough to ignore, but the second one made it impossible to pretend I knew what I was doing. Everyone was watching in dead silence right until the punchline hit. Now none of us can talk about it without bursting out laughing.",
+        f"There is having confidence, and then there is whatever happened with {subject}. I walked in thinking this would be my proudest achievement. Instead, one tiny blunder triggered a comedy of errors so ridiculous that even the people trying to help ended up laughing with tears in their eyes.",
+    ]
+    dramatic_templates = [
+        f"The strangest thing about {subject} is that nobody saw the warning signs until it was already happening. The stakes were quietly climbing with every second, and one sudden move changed the entire outcome. When the truth finally came out, nobody looked at the situation the same way again.",
+        f"It all came down to a single split-second choice during {subject}. One person noticed the detail everyone else missed, and that alone changed everything. The tension in the room was unbelievable, but the ending delivered exactly what everyone had been waiting for.",
+    ]
+
     if style == "funny":
-        return f"I thought {subject} would be easy until the first thing went wrong. The plan failed in front of everyone, so I tried one desperate fix. That fix created an even bigger problem, and the room went completely quiet. Then one ridiculous detail exposed the mistake, turning an embarrassing failure into the funniest moment of the day."
-    if style == "dramatic":
-        return f"I still remember how {subject} began with one detail nobody noticed. By midnight, it had led me to a locked door and a choice with real consequences. My first attempt failed, but it revealed who had been hiding the truth. When the door finally opened, the discovery changed the meaning of everything that happened before it."
-    if style == "viral":
-        return f"The first thing anyone noticed about {subject} was the one detail that made no sense. I ignored it, which was a terrible decision, because five minutes later the entire plan had turned into a ridiculous mess. Every quick fix made the problem more obvious, and now everyone was watching me pretend I knew what I was doing. Then {subject} made one completely unexpected move, and the room went silent before everyone started laughing."
-    return f"I thought {subject} would be easy until the first thing went wrong. The plan failed in front of everyone, so I tried one desperate fix. That fix created an even bigger problem, and the room went completely quiet. Then one ridiculous detail exposed the mistake, turning an embarrassing failure into the funniest moment of the day."
+        return random.choice(funny_templates)
+    elif style == "dramatic":
+        return random.choice(dramatic_templates)
+    return random.choice(viral_templates)
 
 
 def _fit_script_to_duration(script: str, duration: int) -> str:
-    target_words = max(40, int(round(duration * 3.2)))
+    target_words = max(35, int(round(duration * 2.8)))
     words = script.split()
-    if len(words) >= int(target_words * 0.94):
+    # If the script already has adequate length (at least 75% of target), preserve it as is
+    if len(words) >= int(target_words * 0.75):
         return script.strip()
     expansion = (
-        "For a second, nobody knew what would happen next.",
-        "The smallest detail changed the plan, and suddenly every choice mattered.",
-        "The pressure kept rising because the obvious solution made the problem worse.",
-        "Then one final decision exposed the truth and gave the story a clear ending.",
-        "The room fell quiet, and I finally understood why everyone had warned me about that idea.",
-        "I took a breath, tried again, and discovered the simplest answer had been right in front of me.",
-        "For a moment I thought I had made things worse, but a tiny clue changed everything.",
-        "My friends started laughing, then they helped me turn the awkward mistake into a better plan.",
-        "The next few minutes were chaotic, but every surprise pushed the story toward its payoff.",
-        "I kept going because stopping there would have made the whole strange effort pointless.",
-        "By the end, the problem looked completely different from the way it had started.",
-        "That was when I realized the funniest part was how confidently I had misunderstood everything.",
-        "We tried one last time, and this time the result finally made sense to everyone watching.",
-        "I still remember the reaction, because nobody expected that ordinary detail to matter so much.",
-        "Afterward we retold the story all week, each time making the ending sound even more ridiculous.",
-        "It started as a simple shortcut, but it became the moment everyone remembered from that day.",
+        "That unexpected moment caught everyone completely off guard.",
+        "It turned a simple situation into something nobody could stop talking about.",
+        "And honestly, that is the exact reason why everyone wanted to replay it.",
     )
     result = script.strip()
     for sentence in expansion:
@@ -1333,13 +1470,32 @@ def narrate_generate_script():
         return jsonify({"error": "Give the AI a prompt like a funny joke, dramatic hook, or story setup."}), 400
     prompt_lower = prompt.lower()
     target_words = int(round(duration * 2.65))
-    pacing = f"Write about {target_words}-{target_words + 12} words so the narration lasts close to {duration} seconds at a natural speaking pace of roughly 3.2 words per second. Do not make it shorter and do not pad it with filler."
-    if any(word in prompt_lower for word in ("funny", "joke", "laugh", "roast", "chaos", "meme")):
-        system_prompt = f"Write a short first-person anecdote for a vertical narrated video, in the style of someone telling a true story. Start with a specific situation or age, use concrete actions and details, build a problem step by step, and end with a memorable consequence or understated payoff. Make it funny but believable. Avoid generic commentary, film directions, labels, and phrases like 'the main character' or 'everything changed'. {pacing} Return only the story."
-    elif any(word in prompt_lower for word in ("dramatic", "story", "tension", "reveal", "wow", "epic")):
-        system_prompt = f"Write a short first-person anecdote for a vertical narrated video, in the style of someone calmly recounting something that actually happened. Open with a specific situation, include concrete actions and sensory details, let the tension rise naturally, and finish with a clear consequence or twist. Do not use generic commentary, film directions, labels, or phrases like 'the main character' or 'everything changed'. {pacing} Return only the story."
+    pacing = f"Aim for roughly {target_words} words ({duration} seconds narration). Speak directly to the viewer with punchy sentences. Return ONLY the spoken narration."
+    if any(word in prompt_lower for word in ("funny", "joke", "laugh", "roast", "chaos", "meme", "comedy")):
+        system_prompt = (
+            "You are a viral comedy scriptwriter for vertical video (Shorts/TikTok/Reels). "
+            "Write a hilarious, highly entertaining spoken monologue or story based on the user's idea. "
+            "Hook the viewer in the very first sentence. Use fast pacing, sharp comedic timing, and an absurd or funny punchline. "
+            "Return ONLY the spoken narration. Do NOT include titles, scene directions, bracketed actions, narrator labels, or hashtags. "
+            f"{pacing}"
+        )
+    elif any(word in prompt_lower for word in ("dramatic", "story", "tension", "reveal", "mystery", "shocking", "creepy")):
+        system_prompt = (
+            "You are a viral storyteller for vertical video (Shorts/TikTok/Reels). "
+            "Write an intense, suspenseful spoken story based on the user's idea. "
+            "Grab attention in the first 3 seconds with a thrilling or mysterious hook. Build tension quickly and hit a shocking twist or payoff at the end. "
+            "Return ONLY the spoken narration. Do NOT include titles, scene directions, bracketed actions, narrator labels, or hashtags. "
+            f"{pacing}"
+        )
     else:
-        system_prompt = f"Write a viral-feeling short-form story for a vertical narrated video, as if a funny, observant person is telling a friend what actually happened. Treat the user's idea as the story seed, not as a title. Open with an irresistible specific detail in the first sentence. Use concrete actions, a strange or funny complication, escalating consequences, and a payoff that makes people want to replay it. Keep the voice casual, human, slightly surprising, and addictive, never like an AI summary, movie trailer, motivational speech, or list. Do not use generic commentary, film directions, labels, or phrases like 'the main character' or 'everything changed'. {pacing} Return only the story."
+        system_prompt = (
+            "You are an elite short-form viral scriptwriter for YouTube Shorts, TikTok, and Instagram Reels. "
+            "Write a dynamic, high-retention, addictive script based on the user's prompt. "
+            "Open immediately with an irresistible curiosity hook in sentence one. Tell an unpredictable, engaging story that keeps viewers watching until the last second. "
+            "Deliver a satisfying or surprising final payoff. "
+            "Return ONLY the spoken narration. Do NOT include titles, bullet points, scene directions, speaker labels, or markdown formatting. "
+            f"{pacing}"
+        )
 
     style = "funny" if "funny" in prompt_lower or "joke" in prompt_lower else "dramatic" if any(word in prompt_lower for word in ("dramatic", "story", "tension", "reveal", "wow", "epic")) else "viral"
     fallback = _prompt_fallback(prompt, style, duration)
@@ -2141,6 +2297,21 @@ def models():
         "error": error,
     }
     return jsonify(payload), (200 if installed else 503)
+
+
+@app.route("/api/models/scan", methods=["GET", "POST"])
+def scan_models():
+    """Auto-scan all local drives and system paths for Ollama models and recover them."""
+    recovered_models, path, error = _scan_and_recover_ollama_models()
+    payload = {
+        "ok": bool(recovered_models),
+        "models": recovered_models,
+        "default": _default_model(recovered_models),
+        "count": len(recovered_models),
+        "path": path,
+        "error": error,
+    }
+    return jsonify(payload), (200 if recovered_models else 404)
 
 
 @app.get("/api/fonts")

@@ -3,7 +3,7 @@ const $=s=>document.querySelector(s); const $$=s=>[...document.querySelectorAll(
 const editorDownloads=()=>['#reviewDownload','#reviewDownloadMain'].map($).filter(Boolean);
 const editorApplyButtons=()=>['#applyEditorBranding','#applyEditorBrandingMain'].map($).filter(Boolean);
 const reviewPlayer=window.ClipifyReviewPlayer?.attach($('#reviewVideo'),$('#reviewVideoStatus'),$('#reviewVideoSpinner'),$('#reviewVideoStatusText'));
-const input=$('#videoInput'),drop=$('#dropzone'),create=$('#createBtn'),chip=$('#fileChip'),nameEl=$('#fileName'),sizeEl=$('#fileSize'),progressPanel=$('#progressPanel'),results=$('#results'),grid=$('#resultGrid'),log=$('#log'),modelSelect=$('#modelSelect'),refreshModelsBtn=$('#refreshModelsBtn'),fontSelect=$('#fontSelect'),minDuration=$('#minDuration'),maxDuration=$('#maxDuration'),youtubeUrl=$('#youtubeUrl'),youtubeImport=$('#youtubeImport'),youtubeStatus=$('#youtubeStatus');
+const input=$('#videoInput'),drop=$('#dropzone'),create=$('#createBtn'),chip=$('#fileChip'),nameEl=$('#fileName'),sizeEl=$('#fileSize'),progressPanel=$('#progressPanel'),results=$('#results'),grid=$('#resultGrid'),log=$('#log'),modelSelect=$('#modelSelect'),refreshModelsBtn=$('#refreshModelsBtn'),scanModelsBtn=$('#scanModelsBtn'),fontSelect=$('#fontSelect'),minDuration=$('#minDuration'),maxDuration=$('#maxDuration'),youtubeUrl=$('#youtubeUrl'),youtubeImport=$('#youtubeImport'),youtubeStatus=$('#youtubeStatus');
 const positions=['top-left','top-center','top-right','center-left','center','center-right','bottom-left','bottom-center','bottom-right','custom'];
 
 function startTypewriter(){
@@ -53,6 +53,30 @@ refreshModelsBtn?.addEventListener('click', async () => {
     if (refreshModelsBtn) {
       refreshModelsBtn.disabled = false;
       refreshModelsBtn.textContent = '↻';
+    }
+  }
+});
+
+scanModelsBtn?.addEventListener('click', async () => {
+  if (scanModelsBtn) {
+    scanModelsBtn.disabled = true;
+    scanModelsBtn.textContent = '🔍 Searching PC…';
+  }
+  try {
+    const res = await fetch('/api/models/scan', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok && data.models && data.models.length) {
+      await loadOptions();
+      if (scanModelsBtn) scanModelsBtn.style.display = 'none';
+    } else {
+      alert(data.error || 'No Ollama models found during PC scan. Please make sure models were downloaded.');
+    }
+  } catch (err) {
+    alert('PC scan failed: ' + err.message);
+  } finally {
+    if (scanModelsBtn) {
+      scanModelsBtn.disabled = false;
+      scanModelsBtn.textContent = '🔍 Search PC';
     }
   }
 });
@@ -967,11 +991,15 @@ async function loadOptions(){
         $('#statusPill').innerHTML=
           '<span></span> Local AI ready';
 
+      if (scanModelsBtn) scanModelsBtn.style.display = 'none';
+
     }else{
 
       state.modelsAvailable=false;
       modelSelect.disabled=true;
       create.disabled=true;
+
+      if (scanModelsBtn) scanModelsBtn.style.display = 'inline-flex';
 
       modelSelect.innerHTML=
         '<option>No Ollama models found</option>';
@@ -998,6 +1026,8 @@ if($('#statusPill'))
     state.modelsAvailable=false;
     modelSelect.disabled=true;
     create.disabled=true;
+
+    if (scanModelsBtn) scanModelsBtn.style.display = 'inline-flex';
 
     modelSelect.innerHTML=
       '<option>Ollama unavailable</option>';
