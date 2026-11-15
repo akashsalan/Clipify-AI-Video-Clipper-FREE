@@ -1846,7 +1846,7 @@ async function selectReview(job,file){
     meta.hidden=true;
   }
 
-  window.location.hash='editor';
+  navigateTo('editor');
   // Let the editor section become visible before asking Chromium to fetch media.
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
   $('#reviewEmpty').hidden=true;
@@ -2149,15 +2149,17 @@ async function loadProjects(){
 
     el
       .querySelector('.project-open')
-      .onclick=()=>{
-
-        if(x.outputs[0])
-          selectReview(
+      .onclick=async (e)=>{
+        e.preventDefault();
+        e.stopPropagation();
+        const output = (x.outputs && x.outputs.length) ? x.outputs[0] : null;
+        if(output)
+          await selectReview(
             x.id,
-            x.outputs[0]
+            output
           );
         else
-          window.location.hash='create';
+          navigateTo('create');
       };
 
     el.querySelector('.project-share')?.addEventListener('click', (e) => {
@@ -2326,35 +2328,54 @@ $('#newBtn')
 
 create.onclick=start;
 
+function navigateTo(id){
+  const target = id || 'create';
+  if(location.hash.slice(1) !== target){
+    location.hash = target;
+  }
+  $$('.page-section').forEach(s=>
+    s.classList.toggle('visible', s.id === target)
+  );
+  $$('[data-nav]').forEach(a=>
+    a.classList.toggle('active', a.dataset.nav === target)
+  );
+  if(target === 'projects') loadProjects();
+  if(target === 'assets') loadProjects().then(loadAssets);
+  const el = document.getElementById(target);
+  if(el){
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+}
+
+$('#previewReview')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  if (state.jobId && state.reviewFile) {
+    selectReview(state.jobId, state.reviewFile);
+  } else if (state.outputs && state.outputs.length) {
+    selectReview(state.jobId, state.outputs[0]);
+  } else {
+    navigateTo('editor');
+  }
+});
+
+$('#openOutput2')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  if (state.jobId && state.outputs?.[0]) {
+    window.location.href = `/media/${state.jobId}/${encodeURIComponent(state.outputs[0])}?download=1`;
+  } else {
+    navigateTo('projects');
+  }
+});
+
 window.addEventListener(
   'hashchange',
   ()=>{
     const id=
       location.hash.slice(1)||
       'create';
-
-    $$('.page-section')
-      .forEach(s=>
-        s.classList.toggle(
-          'visible',
-          s.id===id
-        )
-      );
-
-    $$('[data-nav]')
-      .forEach(a=>
-        a.classList.toggle(
-          'active',
-          a.dataset.nav===id
-        )
-      );
-
-    if(id==='projects')
-      loadProjects();
-
-    if(id==='assets')
-      loadProjects()
-        .then(loadAssets);
+    navigateTo(id);
   }
 );
 

@@ -306,23 +306,14 @@ class NarratePipeline:
                     continue
                 seen.add(key)
                 found.append((index, path.name.lower(), path))
-        generated_index = len(self.library_folders())
-        for path in self._generated_video_paths():
-            try:
-                key = str(path.resolve()).casefold()
-            except OSError:
-                key = str(path).casefold()
-            if key in seen:
-                continue
-            seen.add(key)
-            found.append((generated_index, str(path).casefold(), path))
         # Library order first, then by name, so the primary folder reads first.
         found.sort(key=lambda item: (item[0], item[1]))
         return [item[2] for item in found]
 
     def _find_video(self, filename: str) -> Path | None:
         requested = str(filename or "").strip()
-        paths = self._video_paths()
+        # Look in background library first, then fall back to generated clips if needed
+        paths = self._video_paths() + self._generated_video_paths()
         if re.fullmatch(r"clip-[0-9a-f]{24}", requested, re.IGNORECASE):
             return next((path for path in paths if self.video_id(path) == requested.lower()), None)
         # Backward compatibility for older clients is deliberately limited to

@@ -461,5 +461,8 @@ $s.Dispose()
         return target
 
     def preview(self, output_dir: str | Path) -> Path:
-        target = Path(output_dir) / f"preview_{abs(hash(self.voice))}.wav"
+        voice_slug = re.sub(r"[^a-zA-Z0-9_-]", "_", self.voice)
+        target = Path(output_dir) / f"preview_sapi_{voice_slug}.wav"
+        if target.exists() and target.stat().st_size >= 1024:
+            return target
         return self.generate(f"This is a preview of the {self.voice} voice.", target)

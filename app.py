@@ -1218,11 +1218,25 @@ def narrate_set_library():
     })
 
 
+def _prewarm_voice_previews(voices: list[dict[str, Any]]) -> None:
+    preview_dir = JOBS / "_narrate_previews"
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    for v in voices:
+        vid = v.get("id")
+        if not vid:
+            continue
+        try:
+            create_tts(vid).preview(preview_dir)
+        except Exception:
+            pass
+
+
 @app.get("/api/narrate/voices")
 def narrate_voices():
     voices = available_voices()
-    # Every voice already reports its own engine. Reporting a flat "Windows
-    # SAPI" here hid the fact that Kokoro voices were available alongside it.
+    # Prewarm preview audio in background so clicking preview plays instantly
+    if voices:
+        threading.Thread(target=_prewarm_voice_previews, args=(voices,), daemon=True).start()
     engines = sorted({str(voice.get("engine", "")) for voice in voices if voice.get("engine")})
     return jsonify({
         "voices": voices,
