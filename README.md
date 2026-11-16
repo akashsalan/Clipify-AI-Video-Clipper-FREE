@@ -41,12 +41,12 @@ Everything runs on your computer—preserving **100% privacy**, with **zero mont
 
 | Package | Version | Size | Checksum (SHA-256) | Download |
 | :--- | :---: | :---: | :--- | :--- |
-| **`Clipify.AI.Setup.exe`** | `v3.1.0` | **264.25 MB** | `42FDAC9AE58B39681C55932F27EBECF9981CDD85D2C0844C6F3B36E05A3EB50C` | [**Download from GitHub**](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.1.0/Clipify.AI.Setup.exe) |
+| **`Clipify.AI.Setup.exe`** | `v3.1.0` | **319.25 MB** | `C3BB3FBAD98A01E1D20AB79D6B98C31461F0DF23985AEEBA6EC99155BF4A6DC9` | [**Download from GitHub**](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.1.0/Clipify.AI.Setup.exe) |
 
 #### Verify installer integrity in PowerShell:
 ```powershell
 Get-FileHash ".\Clipify.AI.Setup.exe" -Algorithm SHA256
-# Compare output with: 42FDAC9AE58B39681C55932F27EBECF9981CDD85D2C0844C6F3B36E05A3EB50C
+# Compare output with: C3BB3FBAD98A01E1D20AB79D6B98C31461F0DF23985AEEBA6EC99155BF4A6DC9
 ```
 
 ---
