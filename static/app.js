@@ -111,7 +111,7 @@ function setFile(file){
   nameEl.textContent=file.name;
   sizeEl.textContent=formatBytes(file.size);
   chip.hidden=false;
-  create.disabled=!state.modelsAvailable;
+  create.disabled=false;
   if(youtubeStatus)youtubeStatus.textContent='';
   const url=URL.createObjectURL(file);
   const preview=$('#sourcePreview');
@@ -996,21 +996,22 @@ async function loadOptions(){
     }else{
 
       state.modelsAvailable=false;
-      modelSelect.disabled=true;
-      create.disabled=true;
+      state.model='';
+      modelSelect.disabled=false;
+      create.disabled=!state.source;
 
       if (scanModelsBtn) scanModelsBtn.style.display = 'inline-flex';
 
       modelSelect.innerHTML=
-        '<option>No Ollama models found</option>';
+        '<option value="">⚡ Built-in Heuristic AI (No Ollama needed)</option>';
 
       if($('#healthText'))
         $('#healthText').textContent=
-          'Ollama model unavailable';
+          'Built-in Heuristic AI (Ollama offline)';
 
-if($('#statusPill'))
+      if($('#statusPill'))
         $('#statusPill').innerHTML=
-          '<span></span> Ollama unavailable';
+          '<span></span> Heuristic Mode';
 
       _scheduleModelRetry();
 
@@ -1024,21 +1025,22 @@ if($('#statusPill'))
     );
 
     state.modelsAvailable=false;
-    modelSelect.disabled=true;
-    create.disabled=true;
+    state.model='';
+    modelSelect.disabled=false;
+    create.disabled=!state.source;
 
     if (scanModelsBtn) scanModelsBtn.style.display = 'inline-flex';
 
     modelSelect.innerHTML=
-      '<option>Ollama unavailable</option>';
+      '<option value="">⚡ Built-in Heuristic AI (No Ollama needed)</option>';
 
     if($('#healthText'))
       $('#healthText').textContent=
-        'Ollama unavailable';
+        'Built-in Heuristic AI';
 
     if($('#statusPill'))
       $('#statusPill').innerHTML=
-        '<span></span> Local AI offline';
+        '<span></span> Heuristic Mode';
 
     _scheduleModelRetry();
   }
@@ -1155,15 +1157,18 @@ async function start(){
   }
 
   if(!state.source){
-    alert('Choose a video first.');
+    alert('Please upload a video or paste a YouTube link to generate Shorts.');
+    if(drop){
+      drop.scrollIntoView({behavior:'smooth',block:'center'});
+    }
     return;
   }
 
   if(!state.modelsAvailable){
     try{await loadOptions();}catch{}
     if(!state.modelsAvailable){
-      alert('Local AI model is not ready. Please select a model or verify Ollama is running.');
-      return;
+      addLog('[AI] Ollama offline: Using built-in candidate & audio density heuristics.');
+      state.model = '';
     }
   }
 

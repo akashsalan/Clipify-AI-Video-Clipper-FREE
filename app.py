@@ -365,6 +365,13 @@ def progress_for_line(line: str, current: int, current_stage: str = "") -> tuple
         return max(current, 25), "Loading cached transcription", "Using the saved WhisperX transcript."
     if "transcription completed" in low or "successfully loaded existing transcription" in low:
         return max(current, 30), "Transcription ready", "Transcript loaded successfully."
+    if "speech recognition in progress" in low or "transcription progress" in low:
+        m = re.search(r"approx (\d+)%", low) or re.search(r"progress:\s*([\d\.]+)%", low)
+        if m:
+            pct = float(m.group(1))
+            scaled = 10 + int((pct / 100.0) * 19)
+            return max(current, min(29, scaled)), "Transcribing audio", text
+        return max(current, 10), "Transcribing audio", text
     if "transcribing video" in low or "starting transcription" in low:
         return max(current, 10), "Transcribing audio", text
     if "[clipsai] detecting" in low:
@@ -883,6 +890,14 @@ def apply_branding_to_file(input_video: str, output_video: str, branding: dict[s
         raise RuntimeError(f"Branding render failed: {proc.stderr[-1800:]}")
 
 
+def _is_cuda_available() -> bool:
+    try:
+        import torch
+        return bool(torch.cuda.is_available())
+    except Exception:
+        return False
+
+
 def _pipeline_command(input_dir: Path) -> list[str]:
     """Build the command that runs the pipeline for one job.
 
@@ -963,8 +978,8 @@ job_id: str, mode: str, clips: int, model: str, font: str, min_duration: int, ma
         "CLIPPEDAI_TEXT_X": str(branding.get("text_x", 50)),
         "CLIPPEDAI_TEXT_Y": str(branding.get("text_y", 75)),
         "CLIPPEDAI_SPLIT_SCREEN": "1" if split_screen else "0",
-        "TRANSCRIPTION_MODEL": os.getenv("TRANSCRIPTION_MODEL", "medium"),
-        "HF_HUB_OFFLINE": "1" if (Path.home() / ".cache" / "huggingface" / "hub" / "models--Systran--faster-whisper-medium").is_dir() else os.getenv("HF_HUB_OFFLINE", "0"),
+        "TRANSCRIPTION_MODEL": os.getenv("TRANSCRIPTION_MODEL", "medium" if _is_cuda_available() else "base"),
+        "HF_HUB_OFFLINE": os.getenv("HF_HUB_OFFLINE", "0"),
         "PYTHONWARNINGS": "ignore::UserWarning:pyannote.audio.core.io,ignore:.*torchcodec.*",
     })
     diagnostic_log = job_dir / "diagnostics" / "qwen-decisions.jsonl"
@@ -972,7 +987,7 @@ job_id: str, mode: str, clips: int, model: str, font: str, min_duration: int, ma
     env["CLIPPEDAI_QWEN_DIAGNOSTIC_LOG"] = str(diagnostic_log)
     cmd = [*_pipeline_command(input_dir), "--auto", "--clips", str(clips),
            "--min-duration", str(min_duration), "--max-duration", str(max_duration)]
-    emit(job_id, "log", f"Starting {mode} mode with {model}; captions: {font}…")
+    emit(job_id, "log", f"Starting {mode} mode with {model or 'built-in heuristic AI'}; captions: {font}…")
 
     heartbeat_stop = threading.Event()
     def heartbeat() -> None:
@@ -985,9 +1000,21 @@ job_id: str, mode: str, clips: int, model: str, font: str, min_duration: int, ma
                 elapsed = max(0, int(time.time() - float(job.get("stage_started", time.time()))))
                 stage = job.get("stage", "Working…")
                 detail = job.get("detail", "")
+                cur_prog = job.get("progress", 0)
                 if elapsed >= 3:
                     detail = f"{detail.split(' · ')[0]} · stage time {elapsed}s"
+                if stage == "Transcribing audio" and cur_prog >= 10 and cur_prog < 29:
+                    m, s = divmod(elapsed, 60)
+                    step_prog = min(28, 10 + int(elapsed / 25))
+                    cur_prog = max(cur_prog, step_prog)
+                    job["progress"] = cur_prog
+                    detail = f"Transcribing audio ({m}m {s}s elapsed · processing speech)"
                 job["detail"] = detail
+            emit(job_id, "progress", {
+                "progress": job.get("progress", 0),
+                "stage": job.get("stage", "Working…"),
+                "detail": job.get("detail", ""),
+            })
 
     try:
         proc = subprocess.Popen(
@@ -1001,6 +1028,7 @@ job_id: str, mode: str, clips: int, model: str, font: str, min_duration: int, ma
 
         progress = 2
         stage = "Starting Clipify AI"
+        prev_stage = stage
         recent_lines: list[str] = []
         assert proc.stdout is not None
         for raw_line in proc.stdout:
@@ -1015,7 +1043,9 @@ job_id: str, mode: str, clips: int, model: str, font: str, min_duration: int, ma
                     jobs[job_id]["progress"] = progress
                     jobs[job_id]["stage"] = stage
                     jobs[job_id]["detail"] = detail
-                    jobs[job_id]["stage_started"] = __import__("time").time()
+                    if stage != prev_stage or "stage_started" not in jobs[job_id]:
+                        jobs[job_id]["stage_started"] = __import__("time").time()
+                        prev_stage = stage
             if line:
                 emit(job_id, "log", line)
 
@@ -1968,11 +1998,11 @@ def start():
         return jsonify({"error": "Invalid editing mode."}), 400
     models, model_error = _discover_ollama_models()
     if not models:
-        return jsonify({"error": model_error, "models": []}), 503
-    if not model:
+        model = ""
+    elif not model or str(model).lower() in ("heuristic", "builtin", "none", ""):
+        model = ""
+    elif models and model not in models:
         model = _default_model(models)
-    if models and model not in models:
-        return jsonify({"error": f"Ollama model '{model}' is not installed.", "models": models}), 400
     allowed_fonts = ["Montserrat Extra Bold", "Arial", "Arial Black", "Segoe UI", "Segoe UI Black", "Impact", "Tahoma", "Trebuchet MS", "Verdana", "Calibri", "Aptos", "Comic Sans MS", "Georgia"]
     if font not in allowed_fonts:
         font = "Montserrat Extra Bold"

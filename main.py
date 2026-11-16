@@ -349,11 +349,20 @@ CAPTION_FONT = os.getenv("CLIPPEDAI_FONT", "Montserrat Extra Bold")
 CAPTION_FONT_SIZE = int(os.getenv("CLIPPEDAI_FONT_SIZE", "78"))
 OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "600"))
 
+def _default_transcription_model() -> str:
+    env_m = os.getenv("TRANSCRIPTION_MODEL")
+    if env_m:
+        return env_m
+    try:
+        import torch
+        if torch.cuda.is_available():
+            return "medium"
+    except Exception:
+        pass
+    return "base"
+
 # --- Transcription ---
-TRANSCRIPTION_MODEL = os.getenv(
-    "TRANSCRIPTION_MODEL",
-    "medium"
-)
+TRANSCRIPTION_MODEL = _default_transcription_model()
 
 # --- Resizing ---
 ASPECT_RATIO_WIDTH = int(
@@ -694,6 +703,8 @@ def call_ollama(
     Does not raise exceptions.
     """
     global OLLAMA_MODEL
+    if not OLLAMA_MODEL or str(OLLAMA_MODEL).lower() in ("none", "null", "heuristic", "builtin"):
+        return None
     if timeout is None:
         timeout = OLLAMA_TIMEOUT
 
@@ -971,25 +982,44 @@ def transcribe_with_progress(audio_file_path, transcriber):
             return aligned
 
         whisperx.align = safe_align
+        stop_transcribe_heartbeat = threading.Event()
+        def _transcribe_heartbeat():
+            t_start = time.time()
+            while not stop_transcribe_heartbeat.wait(5.0):
+                elapsed = int(time.time() - t_start)
+                m, s = divmod(elapsed, 60)
+                if duration > 0:
+                    est_time = max(20.0, duration * 0.45)
+                    pct = min(98, max(5, int((elapsed / est_time) * 90)))
+                    print(f"  [Transcribe] Speech recognition in progress... ({m}m {s}s elapsed · approx {pct}%)", flush=True)
+                else:
+                    print(f"  [Transcribe] Speech recognition in progress... ({m}m {s}s elapsed)", flush=True)
+
+        tb_thread = threading.Thread(target=_transcribe_heartbeat, daemon=True)
+        tb_thread.start()
         try:
-            transcription = transcriber.transcribe(
-                audio_file_path=audio_file_path,
-                iso6391_lang_code="en",
-            )
-        except RuntimeError as rt_err:
-            if "json.exception.type_error.305" in str(rt_err) or "cannot use operator[]" in str(rt_err):
-                print("  [Transcribe] Detected corrupted Hugging Face CTranslate2 cache (json.exception.type_error.305).")
-                cleaned = _clean_corrupted_hf_cache()
-                print(f"  [Transcribe] Cleaned {cleaned} corrupted cache file(s). Retrying transcription with fresh model...")
-                fresh_transcriber = create_transcriber(
-                    model_size=os.getenv("TRANSCRIPTION_MODEL", TRANSCRIPTION_MODEL)
-                )
-                transcription = fresh_transcriber.transcribe(
+            try:
+                transcription = transcriber.transcribe(
                     audio_file_path=audio_file_path,
                     iso6391_lang_code="en",
                 )
-            else:
-                raise
+            except RuntimeError as rt_err:
+                err_low = str(rt_err).lower()
+                if "json.exception.type_error.305" in err_low or "cannot use operator[]" in err_low or "vocabulary" in err_low:
+                    print("  [Transcribe] Detected corrupted Hugging Face CTranslate2 cache.")
+                    cleaned = _clean_corrupted_hf_cache()
+                    print(f"  [Transcribe] Cleaned {cleaned} corrupted cache file(s). Retrying transcription with fresh model...")
+                    fresh_transcriber = create_transcriber(
+                        model_size=os.getenv("TRANSCRIPTION_MODEL", TRANSCRIPTION_MODEL)
+                    )
+                    transcription = fresh_transcriber.transcribe(
+                        audio_file_path=audio_file_path,
+                        iso6391_lang_code="en",
+                    )
+                else:
+                    raise
+        finally:
+            stop_transcribe_heartbeat.set()
     finally:
         if original_align is not None:
             try:
@@ -1186,18 +1216,49 @@ def create_transcriber(model_size: str) -> "Transcriber":
         hf_cache = Path.home() / ".cache" / "huggingface" / "hub"
         arch_name = args[0] if args else kwargs.get("whisper_arch", model_size)
 
+        def _clean_corrupted_model_cache(name: str) -> None:
+            if not hf_cache.is_dir():
+                return
+            clean = str(name).replace(".", "-")
+            import shutil
+            for d in hf_cache.glob(f"models--*--faster-whisper-*{clean}*"):
+                if d.is_dir():
+                    try:
+                        print(f"  [WhisperX] Purging corrupted model cache directory: {d}")
+                        shutil.rmtree(d, ignore_errors=True)
+                    except Exception as rm_err:
+                        print(f"  [WhisperX] Warning: could not remove cache dir {d}: {rm_err}")
+
         def _is_cached(name: str) -> bool:
             if not hf_cache.is_dir():
                 return False
             clean = str(name).replace(".", "-")
             for d in hf_cache.glob(f"models--*--faster-whisper-*{clean}*"):
-                if d.is_dir() and (any(d.rglob("model.bin")) or any(d.rglob("model.safetensors")) or any(d.rglob("config.json"))):
+                if not d.is_dir():
+                    continue
+                # Require model weights, config, and vocabulary
+                has_weights = any(
+                    f.is_file() and f.stat().st_size > 10 * 1024 * 1024
+                    for f in d.rglob("model.*")
+                )
+                has_config = any(
+                    f.is_file() and f.stat().st_size > 50
+                    for f in d.rglob("config.json")
+                )
+                has_vocab = any(
+                    f.is_file() and f.stat().st_size > 1024
+                    for f in d.rglob("vocabulary.*")
+                ) or any(
+                    f.is_file() and f.stat().st_size > 1024
+                    for f in d.rglob("tokenizer.json")
+                )
+                if has_weights and has_config and has_vocab:
                     return True
             return False
 
         has_exact = _is_cached(arch_name)
         if not has_exact:
-            # Fall back to best available local model to avoid network reset / 10054
+            # Fall back to best available verified local model to avoid network reset / 10054
             for candidate in ("medium", "base", "small", "large-v1", "large-v2", "large-v3"):
                 if _is_cached(candidate):
                     print(f"  [WhisperX] Requested '{arch_name}' not cached locally; using cached '{candidate}'.")
@@ -1231,8 +1292,24 @@ def create_transcriber(model_size: str) -> "Transcriber":
                 except Exception:
                     pass
 
+            is_vocab_err = "vocabulary" in err_msg or "tokenizer" in err_msg or "cannot load" in err_msg
+            if is_vocab_err:
+                print(f"  [WhisperX] Detected corrupted vocabulary in cache for '{arch_name}'. Purging corrupted cache...")
+                _clean_corrupted_model_cache(arch_name)
+                kwargs["local_files_only"] = False
+                os.environ.pop("HF_HUB_OFFLINE", None)
+                try:
+                    return original_load_model(*args, **kwargs)
+                except Exception as retry_exc:
+                    print(f"  [WhisperX] Direct redownload failed ({retry_exc}), retrying via hf-mirror.com...")
+                    os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+                    try:
+                        return original_load_model(*args, **kwargs)
+                    except Exception:
+                        pass
+
             is_net_err = "connectionreseterror" in err_msg or "protocolerror" in err_msg or "10054" in err_msg or "connection" in err_msg
-            if kwargs.get("local_files_only") and not is_net_err:
+            if kwargs.get("local_files_only") and not is_net_err and not is_vocab_err:
                 print(f"  [WhisperX] Local load exception ({exc}), retrying without local_files_only...")
                 kwargs["local_files_only"] = False
                 os.environ.pop("HF_HUB_OFFLINE", None)
@@ -1256,17 +1333,20 @@ def create_transcriber(model_size: str) -> "Transcriber":
                 except Exception:
                     pass
 
-            # Final fallback to medium or any cached model
+            # Final fallback to any other VERIFIED cached model (avoiding the failed one)
             for candidate in ("medium", "base", "small"):
-                if _is_cached(candidate):
-                    print(f"  [WhisperX] Load exception ({exc}), falling back to cached '{candidate}'...")
+                if candidate != arch_name and _is_cached(candidate):
+                    print(f"  [WhisperX] Load exception ({exc}), falling back to verified cached '{candidate}'...")
                     kwargs["local_files_only"] = True
                     os.environ["HF_HUB_OFFLINE"] = "1"
                     if args:
                         args = (candidate,) + args[1:]
                     else:
                         kwargs["whisper_arch"] = candidate
-                    return original_load_model(*args, **kwargs)
+                    try:
+                        return original_load_model(*args, **kwargs)
+                    except Exception:
+                        continue
             raise exc
 
     whisperx.load_model = load_model_with_silero
