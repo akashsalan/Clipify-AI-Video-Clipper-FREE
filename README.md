@@ -18,7 +18,7 @@
 
 [![Release](https://img.shields.io/badge/release-v3.0.0-438d72?style=for-the-badge&logo=github)](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/tag/v3.0.0)
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-243b63?style=for-the-badge&logo=windows)](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/tag/v3.0.0)
-[![License](https://img.shields.io/badge/license-MIT-6366f1?style=for-the-badge)](LICENSE)
+[![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-6366f1?style=for-the-badge)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-3776ab?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![Ollama](https://img.shields.io/badge/AI%20Engine-Ollama%20%2F%20Qwen-000000?style=for-the-badge&logo=ollama&logoColor=white)](https://ollama.ai)
 
@@ -199,7 +199,13 @@ Clipify AI is built on local privacy. It connects seamlessly to a local [Ollama]
 
 ## 📄 License & Credits
 
-Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for details.
+This project is licensed under the **Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0)**.
+
+- **Attribution**: You must give appropriate credit to the original creator (`sherlock-dev-ai`) and provide a direct link to the [official repository](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE).
+- **Non-Commercial**: Free for personal, non-commercial use.
+- **Commercial Licensing**: For commercial licensing inquiries and permissions, please contact: `betterpopcorns@gmail.com`.
+
+See the full [`LICENSE`](LICENSE) for complete legal terms.
 
 Developed with ❤️ by [sherlock-dev-ai](https://github.com/sherlock-dev-ai).
 Star ⭐ the repository if you found it helpful!
