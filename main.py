@@ -212,12 +212,71 @@ def _init_nltk() -> None:
     _ensure_nltk_punkt()
 
 
+def _ensure_silero_vad_cache() -> None:
+    """Pre-seed local torch hub cache with bundled Silero VAD to prevent network drops/rate limits."""
+    try:
+        hub_dir = Path.home() / ".cache" / "torch" / "hub"
+        target_dir = hub_dir / "snakers4_silero-vad_master"
+        if not target_dir.is_dir() or not (target_dir / "hubconf.py").is_file():
+            bundled_candidates = [
+                Path(__file__).resolve().parent / "assets" / "silero-vad",
+                Path(sys.executable).parent / "assets" / "silero-vad",
+                Path(sys.executable).parent.parent / "assets" / "silero-vad",
+            ]
+            for candidate in bundled_candidates:
+                if candidate.is_dir() and (candidate / "hubconf.py").is_file():
+                    hub_dir.mkdir(parents=True, exist_ok=True)
+                    import shutil
+                    if target_dir.exists():
+                        shutil.rmtree(target_dir, ignore_errors=True)
+                    shutil.copytree(candidate, target_dir)
+                    print("  [VAD] Initialized local Silero VAD from bundled assets.", flush=True)
+                    break
+    except Exception as e:
+        print(f"  [VAD] Warning: could not pre-seed silero-vad: {e}", flush=True)
+
+
+def _ensure_nltk_data_cache() -> None:
+    """Pre-seed local nltk_data from bundled assets if absent."""
+    try:
+        nltk_dir = Path.home() / "AppData" / "Roaming" / "nltk_data" / "tokenizers"
+        if not nltk_dir.is_dir():
+            bundled = Path(__file__).resolve().parent / "assets" / "nltk_data" / "tokenizers"
+            if bundled.is_dir():
+                nltk_dir.parent.mkdir(parents=True, exist_ok=True)
+                import shutil
+                shutil.copytree(bundled, nltk_dir)
+                print("  [NLTK] Initialized local NLTK tokenizers from bundled assets.", flush=True)
+    except Exception:
+        pass
+
+
+def _auto_install_package(package_name: str, import_name: Optional[str] = None) -> bool:
+    """Auto-install missing dependency into current Python environment if absent."""
+    name = import_name or package_name
+    try:
+        __import__(name)
+        return True
+    except ImportError:
+        print(f"  [Setup] Missing dependency '{package_name}'. Auto-installing now...", flush=True)
+        try:
+            cmd = [sys.executable, "-m", "pip", "install", package_name, "--no-warn-script-location"]
+            subprocess.check_call(cmd)
+            print(f"  [Setup] Successfully installed '{package_name}'.", flush=True)
+            return True
+        except Exception as e:
+            print(f"  [Setup] Warning: could not auto-install '{package_name}': {e}", flush=True)
+            return False
+
+
 def _init_ml_runtime(feature: str = "The Clipify AI video pipeline") -> None:
     """Prepare the ML runtime tier. Fails loudly when it is genuinely absent."""
     if _compiled_build:
         _require_runtime(feature)
     bootstrap_runtime()
     _init_torch()
+    _ensure_silero_vad_cache()
+    _ensure_nltk_data_cache()
     _init_nltk()
     _ensure_cv2()
 
