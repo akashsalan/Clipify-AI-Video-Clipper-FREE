@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/tag/v3.0.0"><strong>Download v3.0.0 Installer (Windows x64) »</strong></a>
   <br>
-  <a href="https://clippedai.shaarav.xyz">Website</a> ·
+  <a href="https://ai.projectclipzy.workers.dev/">Project Website</a> ·
   <a href="#-key-features">Key Features</a> ·
   <a href="#-quick-start">Quick Start</a> ·
   <a href="#-clipper-vs-competitors">Comparison</a> ·
@@ -185,6 +185,15 @@ Clipify AI is built on local privacy. It connects seamlessly to a local [Ollama]
 - **Frontend**: Vanilla JavaScript (ES6+), Modern CSS3, HTML5 Canvas.
 - **Packaging**: Electron, NSIS, PyInstaller, C# Launcher.
 - **Local AI**: Ollama REST API (`qwen2.5` series).
+
+---
+
+## 🔗 Project Links
+
+- **Official Website:** [ai.projectclipzy.workers.dev](https://ai.projectclipzy.workers.dev/)
+- **Windows Releases:** [GitHub Releases](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases)
+- **v3.0.0 Release Notes:** [Release Notes](docs/RELEASE_NOTES_v3.0.0.md)
+- **AI Selection Behavior:** [AI Selection Policy](docs/AI_SELECTION_POLICY.md)
 
 ---
 

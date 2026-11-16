@@ -33,3 +33,6 @@
 - **Size:** 277,087,552 bytes (264.25 MB)
 - **SHA-256:** `30F5E1AD72303AC5D00E708C0F0D86D73B1BEA0093CAF163FC93C01ABBEE553D`
 - **Download Link:** [GitHub Releases v3.0.0](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.0.0/Clipify.AI.Setup.exe)
+- **Project Website:** [ai.projectclipzy.workers.dev](https://ai.projectclipzy.workers.dev/)
+- **Repository:** [sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE)
+
