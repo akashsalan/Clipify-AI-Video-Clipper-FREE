@@ -35,3 +35,4 @@
 Download **`Clipify.AI.Setup.exe`** from GitHub Releases:
 - Direct Download: [Clipify.AI.Setup.exe](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.1.0/Clipify.AI.Setup.exe)
 - Documentation & Website: [https://ai.projectclipzy.workers.dev/](https://ai.projectclipzy.workers.dev/)
+
