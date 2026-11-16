@@ -980,6 +980,8 @@ job_id: str, mode: str, clips: int, model: str, font: str, min_duration: int, ma
         "CLIPPEDAI_SPLIT_SCREEN": "1" if split_screen else "0",
         "TRANSCRIPTION_MODEL": os.getenv("TRANSCRIPTION_MODEL", "medium" if _is_cuda_available() else "base"),
         "HF_HUB_OFFLINE": os.getenv("HF_HUB_OFFLINE", "0"),
+        "KMP_DUPLICATE_LIB_OK": "TRUE",
+        "OMP_NUM_THREADS": "4",
         "PYTHONWARNINGS": "ignore::UserWarning:pyannote.audio.core.io,ignore:.*torchcodec.*",
     })
     diagnostic_log = job_dir / "diagnostics" / "qwen-decisions.jsonl"

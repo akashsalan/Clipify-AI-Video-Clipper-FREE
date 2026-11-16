@@ -38,6 +38,8 @@ warnings.filterwarnings("ignore", module=".*pyannote.*")
 warnings.filterwarnings("ignore", category=UserWarning, module=".*pyannote.*")
 warnings.filterwarnings("ignore", category=UserWarning, module=".*torchcodec.*")
 
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+os.environ.setdefault("OMP_NUM_THREADS", "4")
 install_hidden_subprocess_defaults()
 
 def _run_hidden(*args, **kwargs):
@@ -983,44 +985,26 @@ def transcribe_with_progress(audio_file_path, transcriber):
             return aligned
 
         whisperx.align = safe_align
-        stop_transcribe_heartbeat = threading.Event()
-        def _transcribe_heartbeat():
-            t_start = time.time()
-            while not stop_transcribe_heartbeat.wait(5.0):
-                elapsed = int(time.time() - t_start)
-                m, s = divmod(elapsed, 60)
-                if duration > 0:
-                    est_time = max(20.0, duration * 0.45)
-                    pct = min(98, max(5, int((elapsed / est_time) * 90)))
-                    print(f"  [Transcribe] Speech recognition in progress... ({m}m {s}s elapsed · approx {pct}%)", flush=True)
-                else:
-                    print(f"  [Transcribe] Speech recognition in progress... ({m}m {s}s elapsed)", flush=True)
-
-        tb_thread = threading.Thread(target=_transcribe_heartbeat, daemon=True)
-        tb_thread.start()
         try:
-            try:
-                transcription = transcriber.transcribe(
+            transcription = transcriber.transcribe(
+                audio_file_path=audio_file_path,
+                iso6391_lang_code="en",
+            )
+        except RuntimeError as rt_err:
+            err_low = str(rt_err).lower()
+            if "json.exception.type_error.305" in err_low or "cannot use operator[]" in err_low or "vocabulary" in err_low:
+                print("  [Transcribe] Detected corrupted Hugging Face CTranslate2 cache.")
+                cleaned = _clean_corrupted_hf_cache()
+                print(f"  [Transcribe] Cleaned {cleaned} corrupted cache file(s). Retrying transcription with fresh model...")
+                fresh_transcriber = create_transcriber(
+                    model_size=os.getenv("TRANSCRIPTION_MODEL", TRANSCRIPTION_MODEL)
+                )
+                transcription = fresh_transcriber.transcribe(
                     audio_file_path=audio_file_path,
                     iso6391_lang_code="en",
                 )
-            except RuntimeError as rt_err:
-                err_low = str(rt_err).lower()
-                if "json.exception.type_error.305" in err_low or "cannot use operator[]" in err_low or "vocabulary" in err_low:
-                    print("  [Transcribe] Detected corrupted Hugging Face CTranslate2 cache.")
-                    cleaned = _clean_corrupted_hf_cache()
-                    print(f"  [Transcribe] Cleaned {cleaned} corrupted cache file(s). Retrying transcription with fresh model...")
-                    fresh_transcriber = create_transcriber(
-                        model_size=os.getenv("TRANSCRIPTION_MODEL", TRANSCRIPTION_MODEL)
-                    )
-                    transcription = fresh_transcriber.transcribe(
-                        audio_file_path=audio_file_path,
-                        iso6391_lang_code="en",
-                    )
-                else:
-                    raise
-        finally:
-            stop_transcribe_heartbeat.set()
+            else:
+                raise
     finally:
         if original_align is not None:
             try:
@@ -1210,8 +1194,8 @@ def create_transcriber(model_size: str) -> "Transcriber":
         kwargs["device"] = os.getenv("WHISPERX_DEVICE", compute_params["device"])
         kwargs["compute_type"] = os.getenv("WHISPERX_COMPUTE_TYPE", compute_params["compute_type"])
         if kwargs["device"] == "cpu":
-            cpu_count = os.cpu_count() or 8
-            kwargs.setdefault("threads", min(12, max(4, cpu_count - 2)))
+            cpu_count = os.cpu_count() or 4
+            kwargs.setdefault("threads", min(6, max(2, cpu_count - 2)))
 
         # Check local HuggingFace cache to prevent ProtocolError/ConnectionResetError (10054)
         hf_cache = Path.home() / ".cache" / "huggingface" / "hub"
