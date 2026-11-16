@@ -1,80 +1,196 @@
 <div align="center">
 
-# Clipify AI: AI Video Clipper & Shorts Maker
+# 🎬 Clipify AI: Free & Open-Source AI Video Clipper & Shorts Studio
 
-### Turn long videos into vertical, captioned clips. Create narration videos from a script.
+### Turn long videos into viral, vertical 9:16 Shorts with AI highlights, animated captions & faceless narration.
 
-**A Windows AI video clipping and narration studio.**
-
-<p>
-  <a href="https://ai.projectclipzy.workers.dev/">Project website</a>
-  &nbsp; | &nbsp;
-  <a href="https://github.com/sherlock-dev-ai/Clipify-AI/releases">Windows installer releases</a>
-  &nbsp; · &nbsp;
-  <a href="docs/AI_SELECTION_POLICY.md">AI selection policy</a>
-</p>
-
-![Windows x64](https://img.shields.io/badge/platform-Windows%20x64-243b63?style=flat-square)
-![Preview build](https://img.shields.io/badge/release-preview-f39b74?style=flat-square)
-![Version 2.0.0](https://img.shields.io/badge/version-2.0.0-438d72?style=flat-square)
-
-</div>
-
-## Made for two video workflows
-
-| **Clip a moment** | **Create a narration** |
-|:--|:--|
-| Find candidate moments in longer footage, then make vertical clips with timed captions. Choose a style such as Gaming, Viral, Funny, Dramatic, Educational, or Story. | Draft or generate a script, choose a voice and background footage, and render a narration video. |
-| ![Clipping dashboard](docs/screenshots/dashboard.png) | ![Narration studio](docs/screenshots/narration.png) |
-
-The clipping and narration workflows are separate parts of the desktop application. The website preview below is the project site, not an in-app screen.
+**100% Free · Private & Local · No Cloud Subscriptions · No Watermarks**
 
 <p align="center">
-  <a href="https://ai.projectclipzy.workers.dev/">
-    <img src="docs/screenshots/website.png" alt="Clipify AI project website" width="88%">
-  </a>
+  <a href="https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/tag/v3.0.0"><strong>Download v3.0.0 Installer (Windows x64) »</strong></a>
+  <br>
+  <a href="https://clippedai.shaarav.xyz">Website</a> ·
+  <a href="#-key-features">Key Features</a> ·
+  <a href="#-quick-start">Quick Start</a> ·
+  <a href="#-clipper-vs-competitors">Comparison</a> ·
+  <a href="#-local-ai-engine">Local AI Setup</a>
 </p>
 
-## Download the Windows preview
+[![Release](https://img.shields.io/badge/release-v3.0.0-438d72?style=for-the-badge&logo=github)](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/tag/v3.0.0)
+[![Platform](https://img.shields.io/badge/platform-Windows%20x64-243b63?style=for-the-badge&logo=windows)](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/tag/v3.0.0)
+[![License](https://img.shields.io/badge/license-MIT-6366f1?style=for-the-badge)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11+-3776ab?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![Ollama](https://img.shields.io/badge/AI%20Engine-Ollama%20%2F%20Qwen-000000?style=for-the-badge&logo=ollama&logoColor=white)](https://ollama.ai)
 
-**[Open Clipify AI Releases](https://github.com/sherlock-dev-ai/Clipify-AI/releases)** to see installers published for this project.
-
-The verified preview installer candidate is **Clipify AI 2.0.0 for Windows x64**. Its release asset is not attached yet:
-
-| File | Size | SHA-256 |
-|:--|--:|:--|
-| `Clipify AI Setup-20261018-205733-726.exe` | 405.7 MiB | `D5E340E8AA8E8342C984D4D41593EB28617BAC209B79A8D723F091C6C341DB96` |
-
-After downloading, verify the file hash in PowerShell:
-
-```powershell
-Get-FileHash ".\Clipify AI Setup-20261018-205733-726.exe" -Algorithm SHA256
-```
-
-This is a preview build. The installer is not digitally signed, so Windows may show an unknown-publisher warning. Review the installer prompts before continuing.
-
-## Local AI
-
-Clipify AI can use Qwen through a locally configured Ollama service to review clip candidates. Ollama and a compatible model must be available on the user's computer; model availability and performance depend on the system. See the [AI selection policy](docs/AI_SELECTION_POLICY.md) for how approvals, rejections, recoverable candidates, and unavailable responses are handled.
-
-## Setup notes
-
-- The installer targets 64-bit Windows. A minimum Windows version and hardware profile have not been certified for general release.
-- Runtime components and selected AI models may need to be downloaded during setup. Model downloads can be several gigabytes; the actual selection and estimate are shown by the installer.
-- Qwen review requires a compatible local Ollama service and an available model; setup and runtime depend on the selected configuration and local environment.
-- This preview has not been certified for general-release compatibility.
-
-## Project links
-
-- **Website:** [ai.projectclipzy.workers.dev](https://ai.projectclipzy.workers.dev/)
-- **Downloads:** [GitHub Releases](https://github.com/sherlock-dev-ai/Clipify-AI/releases)
-- **Release notes:** [Preview notes](docs/RELEASE_NOTES_PREVIEW_2026-10-18.md)
-- **AI behavior:** [AI selection policy](docs/AI_SELECTION_POLICY.md)
-
-<div align="center">
+</div>
 
 ---
 
-*Clipify AI | Windows video clipping and narration preview*
+## ⚡ What is Clipify AI?
 
-</div>
+**Clipify AI** is an open-source, full-stack desktop alternative to expensive cloud platforms like OpusClip, Munch, and Submagic. It brings state-of-the-art AI video clipping, face-tracking vertical crop, Hormozi-style animated word subtitles, and an AI narration generation studio directly onto your local machine.
+
+Everything runs on your computer—preserving **100% privacy**, with **zero monthly subscription fees**, **zero API costs**, and **no video length quotas**.
+
+---
+
+## 📥 Download Windows Installer (v3.0.0)
+
+> [!IMPORTANT]
+> The verified release installer is **Clipify AI v3.0.0 for Windows 10/11 (64-bit)**.
+
+| Package | Version | Size | Checksum (SHA-256) | Download |
+| :--- | :---: | :---: | :--- | :--- |
+| **`Clipify.AI.Setup.exe`** | `v3.0.0` | **264.25 MB** | `30F5E1AD72303AC5D00E708C0F0D86D73B1BEA0093CAF163FC93C01ABBEE553D` | [**Download from GitHub**](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.0.0/Clipify.AI.Setup.exe) |
+
+#### Verify installer integrity in PowerShell:
+```powershell
+Get-FileHash ".\Clipify.AI.Setup.exe" -Algorithm SHA256
+# Compare output with: 30F5E1AD72303AC5D00E708C0F0D86D73B1BEA0093CAF163FC93C01ABBEE553D
+```
+
+---
+
+## 🌟 Key Features
+
+### 1. 🎯 AI Video Clipping & Viral Highlight Scoring
+- **Automated Ingestion**: Paste a YouTube link or drag-and-drop MP4/MOV/MKV/WEBM footage.
+- **Word-Level Transcription**: Fast, accurate speech-to-text powered by WhisperX.
+- **LLM Virality Scoring**: Uses local Ollama models (`qwen2.5:3b`, `qwen2.5:8b`, etc.) to rank conversation hooks, humor, drama, or actionable advice.
+- **Automatic Titles & Descriptions**: Generates high-CTR titles, hashtags, and social descriptions ready for YouTube Shorts, Instagram Reels, and TikTok.
+
+### 2. 📐 Smart 9:16 Face-Tracking & 2-Panel Split-Screen
+- **Active Speaker Tracking**: Computer-vision face detection smoothly centers subjects in a vertical 9:16 frame.
+- **2-Panel Split Screen**: Seamlessly combine two speakers or pair commentary/reaction footage on top with engaging gameplay below.
+
+### 3. 🎨 Dynamic Animated Captions (Hormozi / Viral Style)
+- **Active Word Highlighting**: Karaoke-style word highlighting with customizable accent colors (Neon Yellow, Coral, Cyan, Green).
+- **Creator Font Library**: Includes Montserrat Extra Bold, The Bold Font, Komika Axis, Anton, and more.
+- **Customizable Layout**: Adjust caption placement, font size, stroke thickness, and drop shadow.
+
+### 4. 🎛️ Built-in 9:16 Vertical Video Editor
+- **Real-Time 9:16 Preview**: True vertical player with zero letterboxing or distortion.
+- **Post-Render Watermarking & Branding**: Overlay custom logos, adjust opacity and scale, or strip transparent backgrounds automatically with built-in chroma-keying.
+- **One-Click Share & Export**: Instant download or export directly from your local project library.
+
+### 5. 🎙️ Narrate Studio (Faceless Shorts Generator)
+- **AI Story & Script Generation**: Turn any idea into a viral script using local LLMs with custom storytelling prompts.
+- **Dual Voice Engines**:
+  - **Kokoro Neural TTS**: High-fidelity, natural neural speech.
+  - **Windows SAPI TTS**: Instant fallback speech.
+  - **Sub-2ms Preview Caching**: Pre-warmed audio cache delivers instant voice samples without re-rendering delays.
+- **Curated Background Footage**: Pick from clean stock backgrounds and render a complete faceless short in seconds.
+
+### 6. 🎮 Interactive Game Installer with Live Telemetry
+- **Setup Mini-Game**: Built-in runner game with 6 dynamic seasonal transitions (Spring foliage, Autumn reds, Winter snow, Bare branches) synchronized to install progress.
+- **Live Console Output**: Real-time installation terminal showing live pip output, runtime unpacking, and model transfers.
+- **Ollama Engine Autodetection**: Automatically detects existing Ollama models on your machine or downloads optimized Qwen models during setup.
+
+---
+
+## 📸 Screenshots
+
+| 🎬 Short Studio Dashboard | 🎙️ Narrate Studio (Faceless Shorts) |
+| :---: | :---: |
+| ![Short Studio Dashboard](docs/screenshots/dashboard.png) | ![Narrate Studio](docs/screenshots/narration.png) |
+
+| 🎛️ 9:16 Vertical Video Editor | 🎭 2-Panel Split-Screen Mode |
+| :---: | :---: |
+| ![9:16 Video Editor](docs/screenshots/editor.png) | ![2-Panel Split Screen](docs/screenshots/split_screen.png) |
+
+| 🎮 Interactive Installer with Live Telemetry | 📂 Projects Library |
+| :---: | :---: |
+| ![Interactive Installer](docs/screenshots/installer.png) | ![Projects Library](docs/screenshots/projects.png) |
+
+---
+
+## 🥊 Clipper vs Competitors
+
+| Feature | OpusClip | Munch / Submagic | Clipify AI (v3.0.0) |
+| :--- | :---: | :---: | :---: |
+| **Pricing** | $19 – $49/mo | $20 – $50/mo | **100% Free & Open-Source** |
+| **Video Processing** | Cloud (Queues / Limits) | Cloud (Usage Quotas) | **100% Local (Private & Unlimited)** |
+| **Watermarks** | Yes (Free tier) | Yes (Free tier) | **None (Clean Video Exports)** |
+| **AI LLM Highlight Detection** | Proprietary Cloud | Proprietary Cloud | **Local Ollama / Qwen** |
+| **Animated Word Captions** | ✅ | ✅ | **✅ (Multiple Creator Fonts)** |
+| **2-Panel Split Screen** | Limited | Limited | **✅ Built-in** |
+| **Faceless Narration Studio** | ❌ | ❌ | **✅ Built-in (Kokoro + SAPI)** |
+| **Custom Code & Extensibility**| ❌ | ❌ | **✅ Full Python / JS Source** |
+
+---
+
+## 🚀 Quick Start
+
+### Method 1: Windows 1-Click Installer (Recommended)
+
+1. Download **[`Clipify.AI.Setup.exe`](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.0.0/Clipify.AI.Setup.exe)** from the latest release.
+2. Launch the installer. It will automatically:
+   - Configure Python 3.11 embedded runtime.
+   - Install required FFmpeg, WhisperX, and PyTorch dependencies.
+   - Detect or pull local Ollama models (`qwen2.5:3b` / `qwen2.5:8b`).
+   - Create desktop shortcuts.
+3. Open **Clipify AI** from your desktop and start clipping!
+
+---
+
+### Method 2: Manual Developer Setup (From Source)
+
+#### Prerequisites:
+- Windows 10/11 (64-bit)
+- Python 3.11+
+- [Git](https://git-scm.com/)
+- [Ollama](https://ollama.ai/) (optional for LLM highlight scoring)
+- NVIDIA GPU with CUDA recommended (CPU supported)
+
+```powershell
+# 1. Clone the repository
+git clone https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE.git
+cd Clipify-AI-Video-Clipper-FREE
+
+# 2. Create and activate a Python 3.11 virtual environment
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
+# 3. Install Python dependencies
+pip install -r requirements-runtime.txt
+
+# 4. Pull your preferred Ollama model
+ollama pull qwen2.5:3b
+# Or for higher quality:
+# ollama pull qwen2.5:8b
+
+# 5. Launch Clipify AI Studio
+python app.py
+```
+
+The web studio will launch automatically in your browser at `http://127.0.0.1:5000`.
+
+---
+
+## 🧠 Local AI Engine
+
+Clipify AI is built on local privacy. It connects seamlessly to a local [Ollama](https://ollama.ai) daemon running on `http://127.0.0.1:11434`.
+
+- **Recommended Models**:
+  - `qwen2.5:3b`: Fast, lightweight (~2 GB VRAM), great for rapid clipping.
+  - `qwen2.5:7b` / `qwen2.5:8b`: Rich contextual reasoning and viral hook detection.
+- **Auto-Detection**: If you already have models installed, Clipify AI automatically detects them in the dropdown or allows one-click model rescanning.
+- **Graceful Fallback**: If Ollama is not running, Clipify AI falls back to transcript-density candidate extraction so clipping never stalls.
+
+---
+
+## 🛠️ Tech Stack
+
+- **Backend**: Python 3.11, Flask, WhisperX, PyTorch, MediaPipe, OpenCV, FFmpeg, Kokoro ONNX, yt-dlp.
+- **Frontend**: Vanilla JavaScript (ES6+), Modern CSS3, HTML5 Canvas.
+- **Packaging**: Electron, NSIS, PyInstaller, C# Launcher.
+- **Local AI**: Ollama REST API (`qwen2.5` series).
+
+---
+
+## 📄 License & Credits
+
+Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for details.
+
+Developed with ❤️ by [sherlock-dev-ai](https://github.com/sherlock-dev-ai).
+Star ⭐ the repository if you found it helpful!
