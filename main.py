@@ -38,8 +38,16 @@ warnings.filterwarnings("ignore", module=".*pyannote.*")
 warnings.filterwarnings("ignore", category=UserWarning, module=".*pyannote.*")
 warnings.filterwarnings("ignore", category=UserWarning, module=".*torchcodec.*")
 
+os.environ["OMP_STACKSIZE"] = "64M"
+os.environ["KMP_STACKSIZE"] = "64M"
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 os.environ.setdefault("OMP_NUM_THREADS", "4")
+os.environ.setdefault("MKL_NUM_THREADS", "4")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "4")
+try:
+    sys.setrecursionlimit(50000)
+except Exception:
+    pass
 install_hidden_subprocess_defaults()
 
 def _run_hidden(*args, **kwargs):
@@ -1045,9 +1053,12 @@ def transcribe_with_progress(audio_file_path, transcriber):
 
         whisperx.align = safe_align
         try:
+            is_cpu_device = getattr(transcriber, "_device", "cpu") == "cpu"
+            t_batch_size = 4 if is_cpu_device else 16
             transcription = transcriber.transcribe(
                 audio_file_path=audio_file_path,
                 iso6391_lang_code="en",
+                batch_size=t_batch_size,
             )
         except RuntimeError as rt_err:
             err_low = str(rt_err).lower()
@@ -1061,6 +1072,7 @@ def transcribe_with_progress(audio_file_path, transcriber):
                 transcription = fresh_transcriber.transcribe(
                     audio_file_path=audio_file_path,
                     iso6391_lang_code="en",
+                    batch_size=t_batch_size,
                 )
             else:
                 raise
@@ -1254,7 +1266,7 @@ def create_transcriber(model_size: str) -> "Transcriber":
         kwargs["compute_type"] = os.getenv("WHISPERX_COMPUTE_TYPE", compute_params["compute_type"])
         if kwargs["device"] == "cpu":
             cpu_count = os.cpu_count() or 4
-            kwargs.setdefault("threads", min(6, max(2, cpu_count - 2)))
+            kwargs.setdefault("threads", min(4, max(2, cpu_count - 2)))
 
         # Check local HuggingFace cache to prevent ProtocolError/ConnectionResetError (10054)
         hf_cache = Path.home() / ".cache" / "huggingface" / "hub"
@@ -1301,22 +1313,11 @@ def create_transcriber(model_size: str) -> "Transcriber":
             return False
 
         has_exact = _is_cached(arch_name)
-        if not has_exact:
-            # Fall back to best available verified local model to avoid network reset / 10054
-            for candidate in ("medium", "base", "small", "large-v1", "large-v2", "large-v3"):
-                if _is_cached(candidate):
-                    print(f"  [WhisperX] Requested '{arch_name}' not cached locally; using cached '{candidate}'.")
-                    arch_name = candidate
-                    if args:
-                        args = (candidate,) + args[1:]
-                    else:
-                        kwargs["whisper_arch"] = candidate
-                    has_exact = True
-                    break
-
         if has_exact or os.getenv("HF_HUB_OFFLINE") == "1":
             kwargs["local_files_only"] = True
             os.environ["HF_HUB_OFFLINE"] = "1"
+        else:
+            kwargs["local_files_only"] = False
 
         print(
             f"  [WhisperX] Loading model '{arch_name}' on "
@@ -1378,7 +1379,9 @@ def create_transcriber(model_size: str) -> "Transcriber":
                     pass
 
             # Final fallback to any other VERIFIED cached model (avoiding the failed one)
-            for candidate in ("medium", "base", "small"):
+            is_cpu = kwargs.get("device") == "cpu"
+            fallback_candidates = ("base", "small", "tiny", "medium") if is_cpu else ("medium", "base", "small")
+            for candidate in fallback_candidates:
                 if candidate != arch_name and _is_cached(candidate):
                     print(f"  [WhisperX] Load exception ({exc}), falling back to verified cached '{candidate}'...")
                     kwargs["local_files_only"] = True

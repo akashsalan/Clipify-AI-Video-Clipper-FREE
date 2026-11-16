@@ -982,7 +982,13 @@ job_id: str, mode: str, clips: int, model: str, font: str, min_duration: int, ma
         "CLIPPEDAI_ALLOW_FALLBACK": "1",
         "HF_HUB_OFFLINE": os.getenv("HF_HUB_OFFLINE", "0"),
         "KMP_DUPLICATE_LIB_OK": "TRUE",
+        "OMP_STACKSIZE": "64M",
+        "KMP_STACKSIZE": "64M",
         "OMP_NUM_THREADS": "4",
+        "MKL_NUM_THREADS": "4",
+        "OPENBLAS_NUM_THREADS": "4",
+        "VECLIB_MAXIMUM_THREADS": "4",
+        "NUMEXPR_NUM_THREADS": "4",
         "PYTHONWARNINGS": "ignore::UserWarning:pyannote.audio.core.io,ignore:.*torchcodec.*",
     })
     diagnostic_log = job_dir / "diagnostics" / "qwen-decisions.jsonl"
