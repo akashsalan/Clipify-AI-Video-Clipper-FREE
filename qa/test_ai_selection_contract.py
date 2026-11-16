@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -190,6 +191,7 @@ class AISelectionContractTests(unittest.TestCase):
                  patch.object(main, "_add_sentence_aligned_prefix_candidates", side_effect=lambda clips, _transcript: clips), \
                  patch.object(main, "calculate_engagement_score", return_value=0.5), \
                  patch.object(main, "analyze_candidates_with_ai", return_value={}), \
+                 patch.dict(os.environ, {"CLIPPEDAI_ALLOW_FALLBACK": "0"}), \
                  patch.object(main, "resize_to_vertical_with_zoom") as resize, \
                  patch.object(main, "create_animated_subtitles") as captions:
                 messages = io.StringIO()

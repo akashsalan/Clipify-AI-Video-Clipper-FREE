@@ -10,7 +10,7 @@ REPO = "sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE"
 TAG = "v3.1.0"
 RELEASE_NAME = "Clipify AI v3.1.0"
 ASSET_NAME = "Clipify.AI.Setup.exe"
-FILE_PATH = r"L:\ClipifyAI\installer\Clipify AI Setup.exe"
+FILE_PATH = r"L:\ClipifyAI\build\installer_app\out\Clipify.AI.Setup.exe"
 
 RELEASE_NOTES = """## Clipify AI v3.1.0 Release Notes
 

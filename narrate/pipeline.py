@@ -308,12 +308,16 @@ class NarratePipeline:
                 found.append((index, path.name.lower(), path))
         # Library order first, then by name, so the primary folder reads first.
         found.sort(key=lambda item: (item[0], item[1]))
-        return [item[2] for item in found]
+        res = [item[2] for item in found]
+        for path in self._generated_video_paths():
+            if str(path).lower() not in seen:
+                seen.add(str(path).lower())
+                res.append(path)
+        return res
 
     def _find_video(self, filename: str) -> Path | None:
         requested = str(filename or "").strip()
-        # Look in background library first, then fall back to generated clips if needed
-        paths = self._video_paths() + self._generated_video_paths()
+        paths = self._video_paths()
         if re.fullmatch(r"clip-[0-9a-f]{24}", requested, re.IGNORECASE):
             return next((path for path in paths if self.video_id(path) == requested.lower()), None)
         # Backward compatibility for older clients is deliberately limited to

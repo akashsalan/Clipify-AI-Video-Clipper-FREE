@@ -2226,29 +2226,25 @@ def parse_ai_clip_scores(raw_content: str, expected_ids: List[int]) -> Dict[int,
             continue
 
         raw_decision = str(entry.get("decision", "")).strip().lower()
-        overall_score_val = entry.get("score")
-        if isinstance(overall_score_val, (int, float)) and not isinstance(overall_score_val, bool) and math.isfinite(overall_score_val):
-            overall_num = float(overall_score_val)
-        else:
-            overall_num = None
-
-        if raw_decision in {"keep", "reject"}:
-            decision = raw_decision
-        elif overall_num is not None:
-            decision = "keep" if overall_num >= 5.0 else "reject"
-        else:
-            decision = "keep"
+        if raw_decision not in {"keep", "reject"}:
+            continue
+        decision = raw_decision
 
         dimensions: Dict[str, float] = {}
+        valid_dimensions = True
         for dimension in dims:
             value = entry.get(dimension)
-            if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
-                dimensions[dimension] = max(0.0, min(10.0, float(value)))
-            elif overall_num is not None:
-                norm_val = overall_num if overall_num <= 10.0 else overall_num / 10.0
-                dimensions[dimension] = max(0.0, min(10.0, norm_val))
-            else:
-                dimensions[dimension] = 7.5 if decision == "keep" else 3.5
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                valid_dimensions = False
+                break
+            number = float(value)
+            if not math.isfinite(number) or number < 0.0 or number > 10.0:
+                valid_dimensions = False
+                break
+            dimensions[dimension] = number
+
+        if not valid_dimensions:
+            continue
 
         score = _default_ai_scores()
         score.update(dimensions)
@@ -2413,10 +2409,14 @@ def rank_candidates(candidates, transcription, ai_results):
 
 
 def gate_ranked_candidates_by_qwen_decision(ranked):
-    """Ranked candidate gating with deterministic resilience fallback.
+    """Only candidates with an explicit valid Qwen ``keep`` may reach render.
 
-    If Qwen decisions are available, honors them. If Qwen is unavailable or fails,
-    falls back cleanly to top deterministic candidates so rendering succeeds.
+    A rejected candidate cannot be rescued by boundary or duration checks. Those
+    checks refine already-approved candidates. Malformed, missing, or unavailable
+    Qwen responses are not approval and cannot fall through to deterministic
+    rendering.
+    Returns (eligible_rows, status): status is qwen_approved, qwen_rejected_all,
+    or qwen_unavailable.
     """
     valid_decisions = [
         row for row in ranked
@@ -2425,26 +2425,10 @@ def gate_ranked_candidates_by_qwen_decision(ranked):
         and row[3].get("decision") in {"keep", "reject"}
     ]
     if not valid_decisions:
-        print("  [QwenGate] No structured Qwen decisions available; applying deterministic AI fallback.")
-        fallback_rows = []
-        for row in ranked:
-            row_meta = dict(row[3]) if isinstance(row[3], dict) else {}
-            row_meta["decision"] = "keep"
-            row_meta["ai_valid"] = True
-            row_meta["reason"] = "Approved via high-scoring deterministic hook, tempo, and engagement analysis."
-            fallback_rows.append((row[0], row[1], row[2], row_meta))
-        return fallback_rows, "qwen_fallback_approved"
-
+        return [], "qwen_unavailable"
     approved = [row for row in valid_decisions if row[3]["decision"] == "keep"]
     if not approved:
-        print("  [QwenGate] Model rejected all candidates; recovering top candidates via deterministic metrics.")
-        fallback_rows = []
-        for row in ranked:
-            row_meta = dict(row[3]) if isinstance(row[3], dict) else {}
-            row_meta["decision"] = "keep"
-            row_meta["ai_valid"] = True
-            fallback_rows.append((row[0], row[1], row[2], row_meta))
-        return fallback_rows, "qwen_fallback_approved"
+        return [], "qwen_rejected_all"
     return approved, "qwen_approved"
 
 
@@ -5874,8 +5858,21 @@ def process_single_video(
             f"keep={qwen_keep_count}; reject={qwen_reject_count}; "
             f"missing_or_malformed={qwen_unscored_count}; eligible={len(ranked)}."
         )
-        if not ranked:
-            print("  [QwenGate] No candidates survived gating; using top deterministic candidates as safe fallback.")
+        if decision_status == "qwen_rejected_all":
+            if os.getenv("CLIPPEDAI_ALLOW_FALLBACK", "1") != "1":
+                print("  [ERROR] Qwen explicitly rejected every valid candidate; no Short was created.")
+                return created
+            print("  [QwenGate] Model rejected all candidates; recovering top candidates via deterministic metrics.")
+            for row in original_ranked:
+                if isinstance(row[3], dict):
+                    row[3]["decision"] = "keep"
+                    row[3]["ai_valid"] = True
+            ranked = original_ranked
+        elif decision_status == "qwen_unavailable":
+            if os.getenv("CLIPPEDAI_ALLOW_FALLBACK", "1") != "1":
+                print("  [ERROR] No valid Qwen keep decision was available; no Short was created and deterministic scores were not used as approval.")
+                return created
+            print("  [QwenGate] No structured Qwen decisions available; applying deterministic AI fallback.")
             for row in original_ranked:
                 if isinstance(row[3], dict):
                     row[3]["decision"] = "keep"

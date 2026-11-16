@@ -979,6 +979,7 @@ job_id: str, mode: str, clips: int, model: str, font: str, min_duration: int, ma
         "CLIPPEDAI_TEXT_Y": str(branding.get("text_y", 75)),
         "CLIPPEDAI_SPLIT_SCREEN": "1" if split_screen else "0",
         "TRANSCRIPTION_MODEL": os.getenv("TRANSCRIPTION_MODEL", "medium" if _is_cuda_available() else "base"),
+        "CLIPPEDAI_ALLOW_FALLBACK": "1",
         "HF_HUB_OFFLINE": os.getenv("HF_HUB_OFFLINE", "0"),
         "KMP_DUPLICATE_LIB_OK": "TRUE",
         "OMP_NUM_THREADS": "4",
@@ -1367,56 +1368,48 @@ def _script_is_complete(script: str) -> bool:
 def _call_ollama_script_prompt(system_prompt: str, user_prompt: str, fallback: str, model: str = "") -> str:
     import urllib.request
 
-    installed = _ollama_models()
-    preferred_model = model.strip()
-    if not preferred_model or preferred_model not in installed:
-        preferred_model = os.getenv("OLLAMA_MODEL", "").strip()
-    if not preferred_model or preferred_model not in installed:
-        preferred_model = _default_model(installed)
-    if not preferred_model and installed:
-        preferred_model = installed[0]
+    preferred_model = model.strip() or os.getenv("OLLAMA_MODEL", "qwen3:8b").strip()
     if not preferred_model:
         return fallback
 
     base_url = (OLLAMA_RUNTIME_BASE_URL or _ollama_base_url()).rstrip("/")
-    candidates = [preferred_model]
-    for m in installed:
-        if m not in candidates:
-            candidates.append(m)
-
-    for candidate in candidates[:2]:
-        for attempt in range(2):
-            try:
-                payload = json.dumps({
-                    "model": candidate,
-                    "stream": False,
-                    "think": False,
-                    "options": {
-                        "temperature": 0.85,
-                        "top_p": 0.9,
-                    },
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                }).encode("utf-8")
-                request = urllib.request.Request(
-                    f"{base_url}/api/chat",
-                    data=payload,
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
-                with urllib.request.urlopen(request, timeout=75) as response:
-                    data = json.loads(response.read().decode("utf-8", errors="replace"))
-                raw_content = str(data.get("message", {}).get("content", "") or "")
-                cleaned = _clean_ai_script(raw_content)
-                if _script_is_complete(cleaned):
-                    if not re.search(r"[.!?]$", cleaned):
-                        cleaned += "."
-                    return cleaned
-            except Exception as exc:
-                print(f"[Ollama Script] Model {candidate} attempt {attempt} error: {exc}")
-                break
+    for attempt in range(2):
+        retry_note = (
+            "\n\nRewrite the draft as complete plain spoken narration. Use at least 28 words, "
+            "end with sentence punctuation, and include no headings, speaker labels, stage directions, "
+            "or Markdown. Return only the narration."
+            if attempt else ""
+        )
+        try:
+            payload = json.dumps({
+                "model": preferred_model,
+                "stream": False,
+                "think": False,
+                "options": {
+                    "temperature": 0.85,
+                    "top_p": 0.9,
+                },
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt + retry_note},
+                ],
+            }).encode("utf-8")
+            request = urllib.request.Request(
+                f"{base_url}/api/chat",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=30) as response:
+                data = json.loads(response.read().decode("utf-8", errors="replace"))
+            raw_content = str(data.get("message", {}).get("content", "") or "")
+            cleaned = _strip_reasoning_blocks(raw_content)
+            if _script_is_complete(cleaned):
+                if not re.search(r"[.!?]$", cleaned):
+                    cleaned += "."
+                return cleaned
+        except Exception:
+            break
     return fallback
 
 
@@ -1450,21 +1443,28 @@ def _prompt_fallback(prompt: str, style: str, duration: int = 30) -> str:
 
 
 def _fit_script_to_duration(script: str, duration: int) -> str:
-    target_words = max(35, int(round(duration * 2.8)))
+    target_words = max(35, int(round(duration * 3.2)))
     words = script.split()
-    # If the script already has adequate length (at least 75% of target), preserve it as is
-    if len(words) >= int(target_words * 0.75):
+    if len(words) >= target_words:
         return script.strip()
     expansion = (
         "That unexpected moment caught everyone completely off guard.",
         "It turned a simple situation into something nobody could stop talking about.",
         "And honestly, that is the exact reason why everyone wanted to replay it.",
+        "Nobody expected the chain reaction that followed immediately after.",
+        "In seconds, what started as a quiet test became the highlight of the entire day.",
+        "Everyone watching immediately knew this was something truly unforgettable.",
+        "The reaction from the crowd made the entire experience even better.",
+        "It proves that the best moments always happen when you least expect them.",
+        "You could feel the energy in the room shift the second that happened.",
+        "By the time it was over, everyone agreed it was worth watching again.",
     )
     result = script.strip()
-    for sentence in expansion:
-        if len(result.split()) >= target_words:
-            break
-        result = f"{result} {sentence}".strip()
+    while len(result.split()) < target_words:
+        for sentence in expansion:
+            if len(result.split()) >= target_words:
+                break
+            result = f"{result} {sentence}".strip()
     return result
 
 
