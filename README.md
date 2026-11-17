@@ -49,10 +49,7 @@ Get-FileHash ".\Clipify.AI.Setup.exe" -Algorithm SHA256
 # Compare output with: C3BB3FBAD98A01E1D20AB79D6B98C31461F0DF23985AEEBA6EC99155BF4A6DC9
 ```
 
-if there's any issues or errors
-contact me
-instagram: sherlock.fy
-discord: sherlock.fy
+
 ---
 
 ## 🌟 Key Features
@@ -212,4 +209,8 @@ This project is licensed under the **Creative Commons Attribution-NonCommercial 
 See the full [`LICENSE`](LICENSE) for complete legal terms.
 
 Developed with ❤️ by [sherlock-dev-ai](https://github.com/sherlock-dev-ai).
+if there's any issues or errors
+contact me
+instagram: sherlock.fy
+discord: sherlock.fy
 Star ⭐ the repository if you found it helpful!
