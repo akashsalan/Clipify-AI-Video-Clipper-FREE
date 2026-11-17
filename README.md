@@ -209,8 +209,10 @@ This project is licensed under the **Creative Commons Attribution-NonCommercial 
 See the full [`LICENSE`](LICENSE) for complete legal terms.
 
 Developed with ❤️ by [sherlock-dev-ai](https://github.com/sherlock-dev-ai).
+
 if there's any issues or errors
 contact me
-instagram: sherlock.fy
+instagram: sherlock.fy |
 discord: sherlock.fy
+
 Star ⭐ the repository if you found it helpful!
