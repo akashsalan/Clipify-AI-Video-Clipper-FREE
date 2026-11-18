@@ -59,76 +59,88 @@ def main():
     release = None
     try:
         with urllib.request.urlopen(req) as resp:
-            old_release = json.loads(resp.read().decode())
-            print(f"Release {TAG} exists (id: {old_release['id']}). Deleting to refresh release timestamp...")
-            del_rel_req = urllib.request.Request(
-                f"https://api.github.com/repos/{REPO}/releases/{old_release['id']}",
-                headers=headers,
-                method="DELETE"
-            )
-            with urllib.request.urlopen(del_rel_req):
-                print(f"Deleted old release {TAG} (id: {old_release['id']})")
+            release = json.loads(resp.read().decode())
+            print(f"Release {TAG} exists (id: {release['id']})")
     except urllib.error.HTTPError as e:
         if e.code == 404:
             print(f"Release {TAG} not found, creating fresh...")
         else:
             raise
 
-    # 2. Create release fresh so timestamp is updated to current time
-    payload = {
-        "tag_name": TAG,
-        "target_commitish": "main",
-        "name": RELEASE_NAME,
-        "body": RELEASE_NOTES,
-        "draft": False,
-        "prerelease": False
-    }
-    create_req = urllib.request.Request(
-        f"https://api.github.com/repos/{REPO}/releases",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={**headers, "Content-Type": "application/json"}
-    )
-    with urllib.request.urlopen(create_req) as resp:
-        release = json.loads(resp.read().decode())
-        print(f"Created fresh release {TAG} (id: {release['id']}) with current timestamp")
+    # 2. Create release if not found
+    if not release:
+        payload = {
+            "tag_name": TAG,
+            "target_commitish": "main",
+            "name": RELEASE_NAME,
+            "body": RELEASE_NOTES,
+            "draft": False,
+            "prerelease": False
+        }
+        create_req = urllib.request.Request(
+            f"https://api.github.com/repos/{REPO}/releases",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={**headers, "Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(create_req) as resp:
+            release = json.loads(resp.read().decode())
+            print(f"Created fresh release {TAG} (id: {release['id']}) with current timestamp")
 
     upload_url_template = release["upload_url"] # e.g. "https://uploads.github.com/repos/.../releases/{release_id}/assets{?name,label}"
     base_upload_url = upload_url_template.split("{")[0]
 
-    # 3. Check if asset already exists
-    assets = release.get("assets", [])
-    for a in assets:
-        if a["name"] == ASSET_NAME:
-            print(f"Asset {ASSET_NAME} already exists (id: {a['id']}). Deleting old asset first...")
-            del_req = urllib.request.Request(
-                f"https://api.github.com/repos/{REPO}/releases/assets/{a['id']}",
-                headers=headers,
-                method="DELETE"
-            )
-            with urllib.request.urlopen(del_req) as del_resp:
-                print(f"Deleted old asset {ASSET_NAME}")
-            break
-
-    # 4. Upload fresh asset
     file_size = os.path.getsize(FILE_PATH)
-    print(f"Uploading {FILE_PATH} ({file_size / (1024*1024):.2f} MB) as {ASSET_NAME}...")
+    print(f"Preparing to upload {FILE_PATH} ({file_size / (1024*1024):.2f} MB) as {ASSET_NAME}...")
 
-    upload_url = f"{base_upload_url}?name={ASSET_NAME}"
-    upload_headers = {
-        "Authorization": f"token {token}",
-        "User-Agent": "ClipifyAI-Release-Script",
-        "Content-Type": "application/octet-stream",
-        "Content-Length": str(file_size)
-    }
+    # Upload with retries
+    for attempt in range(1, 6):
+        # Refresh asset list
+        req = urllib.request.Request(
+            f"https://api.github.com/repos/{REPO}/releases/{release['id']}",
+            headers=headers
+        )
+        try:
+            with urllib.request.urlopen(req) as resp:
+                rel_info = json.loads(resp.read().decode())
+                for a in rel_info.get("assets", []):
+                    if a["name"] == ASSET_NAME:
+                        print(f"Removing existing asset {ASSET_NAME} (id: {a['id']})...")
+                        del_req = urllib.request.Request(
+                            f"https://api.github.com/repos/{REPO}/releases/assets/{a['id']}",
+                            headers=headers,
+                            method="DELETE"
+                        )
+                        with urllib.request.urlopen(del_req):
+                            print("Deleted old asset.")
+                        break
+        except Exception as e:
+            print(f"Asset check note: {e}")
 
-    start_time = time.time()
-    with open(FILE_PATH, "rb") as f:
-        up_req = urllib.request.Request(upload_url, data=f, headers=upload_headers, method="POST")
-        with urllib.request.urlopen(up_req) as resp:
-            result = json.loads(resp.read().decode())
-            elapsed = time.time() - start_time
-            print(f"Upload complete in {elapsed:.1f}s!")
-            print(f"Asset URL: {result.get('browser_download_url')}")
+        print(f"Upload attempt {attempt}/5...")
+        upload_url = f"{base_upload_url}?name={ASSET_NAME}"
+        upload_headers = {
+            "Authorization": f"token {token}",
+            "User-Agent": "ClipifyAI-Release-Script",
+            "Content-Type": "application/octet-stream",
+            "Content-Length": str(file_size)
+        }
+
+        start_time = time.time()
+        try:
+            with open(FILE_PATH, "rb") as f:
+                up_req = urllib.request.Request(upload_url, data=f, headers=upload_headers, method="POST")
+                with urllib.request.urlopen(up_req, timeout=600) as resp:
+                    result = json.loads(resp.read().decode())
+                    elapsed = time.time() - start_time
+                    print(f"SUCCESS: Upload complete in {elapsed:.1f}s!")
+                    print(f"Asset URL: {result.get('browser_download_url')}")
+                    return
+        except Exception as exc:
+            print(f"Attempt {attempt} failed ({type(exc).__name__}: {exc}). Sleeping 5s before retry...")
+            time.sleep(5)
+
+    print("ERROR: Failed to upload asset after 5 attempts.")
+    sys.exit(1)
 
 if __name__ == "__main__":
     main()
