@@ -607,6 +607,41 @@ class LiveStudioManager:
         self.log_activity(f"Batch deleted {deleted_count} clips.", "info")
         return deleted_count
 
+    def update_clip(self, clip_id: str, updates: dict[str, Any]) -> bool:
+        """Update metadata (title, category, subtitle/text) of a clip in memory and disk."""
+        with self._lock:
+            found = False
+            for clip in self.clips:
+                if clip.get("id") == clip_id:
+                    for k in ("title", "category", "subtitle_text", "custom_text", "overlay_text"):
+                        if k in updates and updates[k] is not None:
+                            clip[k] = updates[k]
+                    found = True
+                    meta_path = self.clips_dir / clip_id / "meta.json"
+                    if meta_path.exists():
+                        try:
+                            meta_path.write_text(json.dumps(clip, indent=2), encoding="utf-8")
+                        except Exception as e:
+                            logger.warning("Failed writing updated meta.json for clip %s: %s", clip_id, e)
+                    break
+
+            for r_clip in self.ranked_clips:
+                if r_clip.get("id") == clip_id:
+                    for k in ("title", "category", "subtitle_text", "custom_text", "overlay_text"):
+                        if k in updates and updates[k] is not None:
+                            r_clip[k] = updates[k]
+                    try:
+                        (self.clips_dir / "ranked_clips.json").write_text(
+                            json.dumps(self.ranked_clips, indent=2), encoding="utf-8"
+                        )
+                    except Exception:
+                        pass
+                    break
+
+            if found:
+                self.log_activity(f"Updated metadata for clip {clip_id}.", "info")
+            return found
+
     def log_ranking(self, message: str, level: str = "info") -> None:
         """Record real-time activity for the AI Ranking console."""
         with self._lock:

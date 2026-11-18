@@ -2377,10 +2377,31 @@ $('#openOutput2')?.addEventListener('click', (e) => {
 window.addEventListener(
   'hashchange',
   ()=>{
-    const id=
-      location.hash.slice(1)||
-      'create';
+    const raw = location.hash.slice(1) || 'create';
+    const id = raw.split('?')[0];
     navigateTo(id);
+
+    const urlParams = new URLSearchParams(raw.includes('?') ? raw.slice(raw.indexOf('?')) : location.search);
+    const videoParam = urlParams.get('video');
+    const titleParam = urlParams.get('title') || 'Custom Short';
+    if (id === 'editor' && videoParam) {
+      if ($('#reviewEmpty')) $('#reviewEmpty').hidden = true;
+      if (reviewPlayer) {
+        reviewPlayer.load(videoParam);
+      } else {
+        const video = $('#reviewVideo');
+        if (video) {
+          video.hidden = false;
+          video.src = videoParam;
+          video.load();
+        }
+      }
+      if ($('#reviewTitle')) $('#reviewTitle').textContent = titleParam;
+      if ($('#reviewMeta')) $('#reviewMeta').textContent = '1080 × 1920 · live stream short · editor';
+      editorDownloads().forEach(a => { a.href = videoParam; a.hidden = false; });
+      editorApplyButtons().forEach(b => b.disabled = false);
+      editorPreviewUpdate();
+    }
   }
 );
 

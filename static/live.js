@@ -123,7 +123,21 @@
   const modalVideoPlayer = document.getElementById('modalVideoPlayer');
   const modalDownloadBtn = document.getElementById('modalDownloadBtn');
   const modalDownloadOrigBtn = document.getElementById('modalDownloadOrigBtn');
+  const modalPreviewEditBtn = document.getElementById('modalPreviewEditBtn');
   const closeClipModal = document.getElementById('closeClipModal');
+
+  // Clip Quick Edit Modal elements
+  const clipEditModal = document.getElementById('clipEditModal');
+  const closeEditClipModal = document.getElementById('closeEditClipModal');
+  const editModalVideoPlayer = document.getElementById('editModalVideoPlayer');
+  const editClipTitle = document.getElementById('editClipTitle');
+  const editClipCategory = document.getElementById('editClipCategory');
+  const editClipText = document.getElementById('editClipText');
+  const saveEditClipBtn = document.getElementById('saveEditClipBtn');
+  const openFullEditorBtn = document.getElementById('openFullEditorBtn');
+
+  let activeEditingClip = null;
+  let activePreviewClip = null;
 
   // Studio Console and Auto-Clip Notice
   const studioConsolePanel = document.getElementById('studioConsolePanel');
@@ -657,18 +671,91 @@
   }
 
   function setupModal() {
-    closeClipModal.addEventListener('click', () => {
+    closeClipModal?.addEventListener('click', () => {
       modalVideoPlayer.pause();
       modalVideoPlayer.src = '';
       clipPreviewModal.style.display = 'none';
+      activePreviewClip = null;
     });
 
-    clipPreviewModal.addEventListener('click', (e) => {
+    clipPreviewModal?.addEventListener('click', (e) => {
       if (e.target === clipPreviewModal) {
         modalVideoPlayer.pause();
         modalVideoPlayer.src = '';
         clipPreviewModal.style.display = 'none';
+        activePreviewClip = null;
       }
+    });
+
+    modalPreviewEditBtn?.addEventListener('click', () => {
+      if (!activePreviewClip) return;
+      const clipToEdit = activePreviewClip;
+      modalVideoPlayer.pause();
+      modalVideoPlayer.src = '';
+      clipPreviewModal.style.display = 'none';
+      openEditModal(clipToEdit);
+    });
+
+    closeEditClipModal?.addEventListener('click', () => {
+      if (editModalVideoPlayer) {
+        editModalVideoPlayer.pause();
+        editModalVideoPlayer.src = '';
+      }
+      if (clipEditModal) clipEditModal.style.display = 'none';
+      activeEditingClip = null;
+    });
+
+    clipEditModal?.addEventListener('click', (e) => {
+      if (e.target === clipEditModal) {
+        if (editModalVideoPlayer) {
+          editModalVideoPlayer.pause();
+          editModalVideoPlayer.src = '';
+        }
+        clipEditModal.style.display = 'none';
+        activeEditingClip = null;
+      }
+    });
+
+    saveEditClipBtn?.addEventListener('click', async () => {
+      if (!activeEditingClip) return;
+      saveEditClipBtn.disabled = true;
+      saveEditClipBtn.textContent = 'Saving...';
+      try {
+        const payload = {
+          title: editClipTitle.value.trim() || activeEditingClip.title,
+          category: editClipCategory.value || activeEditingClip.category,
+          subtitle_text: editClipText.value.trim(),
+        };
+        const resp = await fetch(`/api/live/clips/${activeEditingClip.id}/update`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (resp.ok) {
+          appendConsoleLog(`[EDIT] Saved changes for "${payload.title}"`, 'success');
+          if (editModalVideoPlayer) {
+            editModalVideoPlayer.pause();
+            editModalVideoPlayer.src = '';
+          }
+          if (clipEditModal) clipEditModal.style.display = 'none';
+          activeEditingClip = null;
+          await fetchClips();
+          await fetchRankedClips();
+        } else {
+          alert('Failed to update clip metadata.');
+        }
+      } catch (err) {
+        alert('Edit save error: ' + err.message);
+      } finally {
+        saveEditClipBtn.disabled = false;
+        saveEditClipBtn.textContent = '💾 Save Metadata';
+      }
+    });
+
+    openFullEditorBtn?.addEventListener('click', () => {
+      if (!activeEditingClip) return;
+      const videoSrc = activeEditingClip.vertical_video || '';
+      window.location.href = `/#editor?video=${encodeURIComponent(videoSrc)}&title=${encodeURIComponent(activeEditingClip.title)}`;
     });
   }
 
@@ -1195,7 +1282,6 @@
             <div class="clip-thumb-wrap">
               <label class="clip-card-checkbox-wrap" title="Select ranked clip">
                 <input type="checkbox" class="ranked-clip-check" data-id="${clip.id}" ${isSelected ? 'checked' : ''}>
-                <span class="custom-check-box"></span>
               </label>
               <div class="rank-position-badge ${rankClass}">${rankLabel}</div>
               <img src="${clip.thumbnail}" alt="" onerror="this.src='/static/icon.png'">
@@ -1210,8 +1296,9 @@
             <div class="clip-card-info">
               <div class="clip-card-title">${escapeHtml(clip.title)}</div>
               <div class="clip-card-actions">
-                <button type="button" class="primary play-clip-btn">Preview ▶</button>
-                <a href="${clip.vertical_video}" download="${escapeHtml(clip.title)}.mp4" class="ghost">Save ↓</a>
+                <button type="button" class="primary play-clip-btn" title="Watch Short">Preview ▶</button>
+                <button type="button" class="ghost edit-clip-btn" title="Edit Clip">Edit ✂️</button>
+                <a href="${clip.vertical_video}" download="${escapeHtml(clip.title)}.mp4" class="ghost save-clip-btn" title="Download Short">Save ↓</a>
                 <button type="button" class="ghost delete-clip-btn" title="Delete Clip">✕</button>
               </div>
             </div>
@@ -1232,6 +1319,11 @@
 
           card.querySelector('.play-clip-btn').addEventListener('click', () => {
             openPreviewModal(clip);
+          });
+
+          card.querySelector('.edit-clip-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            openEditModal(clip);
           });
 
           card.querySelector('.delete-clip-btn').addEventListener('click', async (e) => {
@@ -1282,7 +1374,6 @@
           <div class="clip-thumb-wrap">
             <label class="clip-card-checkbox-wrap" title="Select clip">
               <input type="checkbox" class="clip-select-check" data-id="${clip.id}" ${isChecked ? 'checked' : ''}>
-              <span class="custom-check-box"></span>
             </label>
             <img src="${clip.thumbnail}" alt="" onerror="this.src='/static/icon.png'">
             <span class="clip-category-tag">${escapeHtml(clip.category || 'Highlight')}</span>
@@ -1292,8 +1383,9 @@
             <div class="clip-card-title">${escapeHtml(clip.title)}</div>
             ${badgesHtml ? `<div class="clip-badges-row">${badgesHtml}</div>` : ''}
             <div class="clip-card-actions">
-              <button type="button" class="primary play-clip-btn">Preview ▶</button>
-              <a href="${clip.vertical_video}" download="${escapeHtml(clip.title)}.mp4" class="ghost">Save ↓</a>
+              <button type="button" class="primary play-clip-btn" title="Watch Short">Preview ▶</button>
+              <button type="button" class="ghost edit-clip-btn" title="Edit Clip">Edit ✂️</button>
+              <a href="${clip.vertical_video}" download="${escapeHtml(clip.title)}.mp4" class="ghost save-clip-btn" title="Download Short">Save ↓</a>
               <button type="button" class="ghost delete-clip-btn" title="Delete Clip">✕</button>
             </div>
           </div>
@@ -1316,6 +1408,11 @@
           openPreviewModal(clip);
         });
 
+        card.querySelector('.edit-clip-btn').addEventListener('click', (e) => {
+          e.stopPropagation();
+          openEditModal(clip);
+        });
+
         card.querySelector('.delete-clip-btn').addEventListener('click', async (e) => {
           e.stopPropagation();
           if (confirm('Delete this generated clip?')) {
@@ -1336,6 +1433,7 @@
   }
 
   function openPreviewModal(clip) {
+    activePreviewClip = clip;
     modalClipTitle.textContent = clip.title;
     modalVideoPlayer.src = clip.vertical_video;
     modalDownloadBtn.href = clip.vertical_video;
@@ -1351,6 +1449,19 @@
 
     clipPreviewModal.style.display = 'flex';
     modalVideoPlayer.play().catch(() => {});
+  }
+
+  function openEditModal(clip) {
+    activeEditingClip = clip;
+    if (editModalVideoPlayer) {
+      editModalVideoPlayer.src = clip.vertical_video;
+      editModalVideoPlayer.load();
+    }
+    if (editClipTitle) editClipTitle.value = clip.title || '';
+    if (editClipCategory) editClipCategory.value = clip.category || 'High-energy moments';
+    if (editClipText) editClipText.value = clip.subtitle_text || clip.overlay_text || '';
+
+    if (clipEditModal) clipEditModal.style.display = 'flex';
   }
 
   function formatDuration(sec) {

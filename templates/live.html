@@ -612,8 +612,51 @@
       <video id="modalVideoPlayer" controls playsinline></video>
     </div>
     <div class="modal-actions">
+      <button type="button" class="secondary" id="modalPreviewEditBtn" style="padding: 10px 18px; font-weight: 600; cursor: pointer; border-radius: 8px;">Edit ✂️</button>
       <a id="modalDownloadBtn" class="primary download-btn" download>Download 9:16 Short (MP4) ↓</a>
       <a id="modalDownloadOrigBtn" class="ghost download-btn" download>Download 16:9 MP4 ↓</a>
+    </div>
+  </div>
+</div>
+
+<!-- Clip Quick Edit Modal -->
+<div class="modal-overlay" id="clipEditModal" style="display:none;">
+  <div class="modal-card clip-edit-modal-card">
+    <div class="modal-header">
+      <div class="modal-title-with-icon">
+        <span class="modal-warn-icon">✂️</span>
+        <h3 id="editModalHeader">Edit Short</h3>
+      </div>
+      <button type="button" class="close-btn" id="closeEditClipModal">✕</button>
+    </div>
+    <div class="modal-body-edit">
+      <div class="edit-modal-video-wrap">
+        <video id="editModalVideoPlayer" controls playsinline></video>
+      </div>
+      <div class="edit-modal-form">
+        <div class="edit-field">
+          <label for="editClipTitle">Title</label>
+          <input type="text" id="editClipTitle" class="edit-input" placeholder="Short Title">
+        </div>
+        <div class="edit-field">
+          <label for="editClipCategory">Category / Highlight Tag</label>
+          <select id="editClipCategory" class="edit-select">
+            <option value="High-energy moments">⚡ High-energy moments</option>
+            <option value="Viral Short">🔥 Viral Short</option>
+            <option value="Funny / Reaction">😂 Funny / Reaction</option>
+            <option value="Epic Gameplay">🎮 Epic Gameplay</option>
+            <option value="Top Highlight">⭐ Top Highlight</option>
+          </select>
+        </div>
+        <div class="edit-field">
+          <label for="editClipText">Overlay Text / Hook Caption</label>
+          <input type="text" id="editClipText" class="edit-input" placeholder="e.g. WAIT TILL THE END 😱">
+        </div>
+        <div class="edit-modal-actions-row">
+          <button type="button" class="primary" id="saveEditClipBtn">💾 Save Metadata</button>
+          <button type="button" class="ghost" id="openFullEditorBtn">🎨 Open in Full Editor</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>

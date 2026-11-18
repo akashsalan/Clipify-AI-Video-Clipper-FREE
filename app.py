@@ -1229,6 +1229,14 @@ def live_batch_delete_clips():
     return jsonify({"success": True, "deleted_count": deleted, "remaining_count": len(mgr.get_clips())})
 
 
+@app.post("/api/live/clips/<clip_id>/update")
+def live_update_clip(clip_id: str):
+    data = request.get_json(silent=True) or {}
+    mgr = _get_live_studio_mgr()
+    ok = mgr.update_clip(clip_id, data)
+    return jsonify({"success": ok})
+
+
 @app.post("/api/live/clips/rank")
 def live_rank_clips():
     data = request.get_json(silent=True) or {}

@@ -310,6 +310,22 @@ class TestLiveStudio(unittest.TestCase):
         self.assertEqual(len(remaining), 1)
         self.assertEqual(remaining[0]["id"], "c2")
 
+    def test_update_clip(self):
+        from live.studio_manager import LiveStudioManager
+        manager = LiveStudioManager(data_dir=self.root / "live_storage_update", ffmpeg_bin="ffmpeg", python_bin="python")
+        manager.clips = [
+            {"id": "c1", "title": "Old Title", "category": "General", "duration": 15.0},
+        ]
+        manager.ranked_clips = [
+            {"id": "c1", "title": "Old Title", "category": "General", "duration": 15.0},
+        ]
+
+        ok = manager.update_clip("c1", {"title": "Updated Title", "category": "High-energy moments"})
+        self.assertTrue(ok)
+        self.assertEqual(manager.clips[0]["title"], "Updated Title")
+        self.assertEqual(manager.clips[0]["category"], "High-energy moments")
+        self.assertEqual(manager.ranked_clips[0]["title"], "Updated Title")
+
     def test_rank_clips_ai(self):
         from live.studio_manager import LiveStudioManager
         manager = LiveStudioManager(data_dir=self.root / "live_storage_rank", ffmpeg_bin="ffmpeg", python_bin="python")
