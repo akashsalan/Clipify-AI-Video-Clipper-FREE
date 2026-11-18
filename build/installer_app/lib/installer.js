@@ -1075,9 +1075,40 @@ class Installer extends EventEmitter {
     this.note('Installing the AI libraries from requirements-runtime.txt (largest step)', 'download');
     this.updatePhase(id, 12, 'Downloading AI libraries (largest step)');
     this.emitProgress();
+
+    // Ensure no 0-byte or corrupted en_core_web_sm wheels remain in pip's local cache
+    try {
+      await this.runProcess(
+        venvPython,
+        ['-m', 'pip', 'cache', 'remove', '*en_core_web_sm*'],
+        { timeoutMs: 30000 }
+      );
+    } catch (_) {}
+
+    // Check for local pre-bundled wheels (offline first, zero network failure)
+    const wheelsDir = path.join(path.dirname(requirements), 'wheels');
+    const bundledSpacyWheel = path.join(wheelsDir, 'en_core_web_sm-3.8.0-py3-none-any.whl');
+    if (fs.existsSync(bundledSpacyWheel)) {
+      this.note('Installing pre-bundled Kokoro English model wheel (offline)', 'pkg');
+      const wheelInstall = await this.runProcess(
+        venvPython,
+        ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-deps', bundledSpacyWheel],
+        { timeoutMs: 5 * 60 * 1000 }
+      );
+      if (wheelInstall.code === 0) {
+        this.note('Pre-bundled Kokoro English model wheel installed successfully', 'info');
+      }
+    }
+
+    const pipArgs = ['-m', 'pip', 'install', '--disable-pip-version-check', '--progress-bar', 'on'];
+    if (fs.existsSync(wheelsDir)) {
+      pipArgs.push('--find-links', wheelsDir);
+    }
+    pipArgs.push('-r', requirements);
+
     const pipResult = await this.runProcess(
       venvPython,
-      ['-m', 'pip', 'install', '--disable-pip-version-check', '--progress-bar', 'on', '-r', requirements],
+      pipArgs,
       {
         timeoutMs: 4 * 60 * 60 * 1000,
         heartbeatMs: 15000,
@@ -1160,8 +1191,40 @@ class Installer extends EventEmitter {
       }
     );
     if (pipResult.code !== 0) {
-      this.finishPhase(id, 'error', 'AI runtime install failed - see setup.log');
-      throw new Error(`pip install failed (exit ${pipResult.code})`);
+      this.note('Initial pip install encountered an issue; purging pip cache and retrying with --no-cache-dir...', 'warn');
+      try {
+        await this.runProcess(venvPython, ['-m', 'pip', 'cache', 'purge'], { timeoutMs: 30000 });
+      } catch (_) {}
+
+      if (fs.existsSync(bundledSpacyWheel)) {
+        await this.runProcess(
+          venvPython,
+          ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-cache-dir', '--no-deps', bundledSpacyWheel],
+          { timeoutMs: 5 * 60 * 1000 }
+        );
+      }
+
+      const retryArgs = ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-cache-dir', '--progress-bar', 'on'];
+      if (fs.existsSync(wheelsDir)) {
+        retryArgs.push('--find-links', wheelsDir);
+      }
+      retryArgs.push('-r', requirements);
+
+      const retryResult = await this.runProcess(
+        venvPython,
+        retryArgs,
+        {
+          timeoutMs: 4 * 60 * 60 * 1000,
+          heartbeatMs: 15000,
+          quietWarningMs: 90000,
+          watchDirectory: path.join(venvDir, 'Lib', 'site-packages'),
+        }
+      );
+
+      if (retryResult.code !== 0) {
+        this.finishPhase(id, 'error', 'AI runtime install failed - see setup.log');
+        throw new Error(`pip install failed (exit ${retryResult.code})`);
+      }
     }
 
     // ClipsAI depends on the source-only python-magic distribution, while

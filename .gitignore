@@ -150,3 +150,4 @@ test_videos/
 *.onnx
 *.sqlite3
 *.db
+wheels/

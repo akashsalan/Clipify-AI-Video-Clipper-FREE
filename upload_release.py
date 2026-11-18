@@ -50,7 +50,8 @@ RELEASE_NOTES = """<p align="center">
    - Word-by-word animated karaoke subtitles with customizable fonts, styles, and canvas background blurs.
    - Complete toggle to disable subtitles or add custom channel watermarks.
 
-7. **🛡️ 100% Clean Installer & Defender Safety**:
+7. **🛡️ 100% Clean Installer, Offline NLP Model & Defender Safety**:
+   - Pre-bundled offline Kokoro English NLP model wheel (`en_core_web_sm-3.8.0`) directly inside the setup payload with automatic pip cache purging, completely eliminating 0-byte download drops and hash mismatch installation errors.
    - Zero Windows 11 Smart App Control (SAC) blocks — clean uninstallation without unverified stubs.
    - Compiled with standard Microsoft .NET Framework `csc.exe` tools, free of heuristic detections.
    - Prior release `v3.1.0` remains permanently preserved on GitHub.
@@ -64,7 +65,7 @@ RELEASE_NOTES = """<p align="center">
 
 | Package | Version | Size | Checksum (SHA-256) |
 | :--- | :---: | :---: | :--- |
-| **`Clipify.AI.Setup.exe`** | `v3.5.4` | **319.4 MB** | `2A1856080A8441A0019C6BE477903A51DB8B9E337918218D97C0EEE75255B848` |
+| **`Clipify.AI.Setup.exe`** | `v3.5.4` | **331.6 MB** | `856D70F86773D3404FED9999E8456291AE93BDFC7665D0A45255302C70303C26` |
 
 > **Note on Windows SmartScreen & Smart App Control**: Clipify AI is 100% open-source, free community software. Because open-source community releases are not signed by expensive commercial EV certificates ($300+/yr), Windows SmartScreen or Windows 11 Smart App Control (SAC) may display a standard unrecognized publisher prompt. Simply click **"More info"** → **"Run anyway"** to install.
 """
@@ -140,61 +141,38 @@ def main():
     file_size = os.path.getsize(FILE_PATH)
     print(f"Checking {FILE_PATH} ({file_size / (1024*1024):.2f} MB) against GitHub asset {ASSET_NAME}...")
 
-    # Check if identical asset already exists
-    for a in release.get("assets", []):
-        if a["name"] == ASSET_NAME and a.get("size") == file_size:
-            print(f"SUCCESS: Asset {ASSET_NAME} already exists with exact size ({file_size} bytes).")
-            print(f"Asset URL: {a.get('browser_download_url')}")
-            return
+    # Upload using curl.exe for maximum speed and reliable large file streaming
+    upload_url = f"{base_upload_url}?name={ASSET_NAME}"
+    print(f"Uploading {ASSET_NAME} to {upload_url} via curl.exe...")
+    cmd = [
+        "curl.exe",
+        "-sS",
+        "-X", "POST",
+        "-H", f"Authorization: token {token}",
+        "-H", "User-Agent: ClipifyAI-Release-Script",
+        "-H", "Content-Type: application/octet-stream",
+        "--data-binary", f"@{FILE_PATH}",
+        upload_url
+    ]
 
-    # Upload with retries
-    for attempt in range(1, 6):
-        # Refresh asset list
-        req = urllib.request.Request(
-            f"https://api.github.com/repos/{REPO}/releases/{release['id']}",
-            headers=headers
-        )
+    start_time = time.time()
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    elapsed = time.time() - start_time
+
+    if proc.returncode == 0:
         try:
-            with urllib.request.urlopen(req) as resp:
-                rel_info = json.loads(resp.read().decode())
-                for a in rel_info.get("assets", []):
-                    if a["name"] == ASSET_NAME:
-                        print(f"Removing existing asset {ASSET_NAME} (id: {a['id']})...")
-                        del_req = urllib.request.Request(
-                            f"https://api.github.com/repos/{REPO}/releases/assets/{a['id']}",
-                            headers=headers,
-                            method="DELETE"
-                        )
-                        with urllib.request.urlopen(del_req):
-                            print("Deleted old asset.")
-                        break
-        except Exception as e:
-            print(f"Asset check note: {e}")
+            res_json = json.loads(proc.stdout)
+            if "browser_download_url" in res_json:
+                print(f"SUCCESS: Upload complete in {elapsed:.1f}s!")
+                print(f"Asset URL: {res_json.get('browser_download_url')}")
+                return
+            else:
+                print(f"Upload response: {proc.stdout[:300]}")
+        except Exception as je:
+            print(f"Failed parsing curl response: {proc.stdout[:300]}")
+    else:
+        print(f"curl.exe failed with returncode {proc.returncode}: {proc.stderr}")
 
-        print(f"Upload attempt {attempt}/5...")
-        upload_url = f"{base_upload_url}?name={ASSET_NAME}"
-        upload_headers = {
-            "Authorization": f"token {token}",
-            "User-Agent": "ClipifyAI-Release-Script",
-            "Content-Type": "application/octet-stream",
-            "Content-Length": str(file_size)
-        }
-
-        start_time = time.time()
-        try:
-            with open(FILE_PATH, "rb") as f:
-                up_req = urllib.request.Request(upload_url, data=f, headers=upload_headers, method="POST")
-                with urllib.request.urlopen(up_req, timeout=600) as resp:
-                    result = json.loads(resp.read().decode())
-                    elapsed = time.time() - start_time
-                    print(f"SUCCESS: Upload complete in {elapsed:.1f}s!")
-                    print(f"Asset URL: {result.get('browser_download_url')}")
-                    return
-        except Exception as exc:
-            print(f"Attempt {attempt} failed ({type(exc).__name__}: {exc}). Sleeping 5s before retry...")
-            time.sleep(5)
-
-    print("ERROR: Failed to upload asset after 5 attempts.")
     sys.exit(1)
 
 if __name__ == "__main__":
