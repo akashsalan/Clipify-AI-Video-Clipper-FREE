@@ -81,7 +81,7 @@ if os.name == "nt":
 clear_ffmpeg_report_environment()
 install_hidden_subprocess_defaults()
 
-from flask import Flask, Response, jsonify, render_template, request, send_from_directory
+from flask import Flask, Response, jsonify, render_template, request, send_from_directory, send_file
 from werkzeug.utils import secure_filename
 
 def _hidden_creationflags():
@@ -1136,6 +1136,19 @@ def live_connect():
     sensitivity = int(data.get("sensitivity", 5))
     buffer_minutes = int(data.get("buffer_minutes", 10))
     model_name = str(data.get("model_name", "qwen2.5:3b"))
+    editing_prefs = {
+        "auto_edit": bool(data.get("auto_edit", True)),
+        "face_tracking": bool(data.get("face_tracking", True)),
+        "gaming_layout": bool(data.get("gaming_layout", True)),
+        "auto_captions": bool(data.get("auto_captions", True)),
+        "caption_style": str(data.get("caption_style", "highlight")),
+        "caption_font": str(data.get("caption_font", "Montserrat Extra Bold")),
+        "background_style": str(data.get("background_style", "soft_blur")),
+        "background_color": str(data.get("background_color", "#000000")),
+        "custom_text": str(data.get("custom_text", "")),
+        "custom_text_pos": str(data.get("custom_text_pos", "top-center")),
+        "custom_text_color": str(data.get("custom_text_color", "#FFFFFF")),
+    }
 
     mgr = _get_live_studio_mgr()
     ok, msg = mgr.start_session(
@@ -1145,10 +1158,19 @@ def live_connect():
         sensitivity=sensitivity,
         buffer_minutes=buffer_minutes,
         model_name=model_name,
+        editing_prefs=editing_prefs,
     )
     if not ok:
         return jsonify({"error": msg}), 400
     return jsonify({"success": True, "message": msg, "status": mgr.get_status()})
+
+
+@app.post("/api/live/preferences")
+def live_preferences():
+    data = request.get_json(silent=True) or {}
+    mgr = _get_live_studio_mgr()
+    updated = mgr.update_editing_prefs(data)
+    return jsonify({"success": True, "editing_prefs": updated})
 
 
 @app.post("/api/live/disconnect")
@@ -1161,6 +1183,7 @@ def live_disconnect():
 @app.get("/api/live/clips")
 def live_clips():
     mgr = _get_live_studio_mgr()
+    mgr._load_saved_clips()
     return jsonify({"clips": mgr.get_clips()})
 
 
@@ -1173,6 +1196,18 @@ def live_instant_clip():
     if not clip:
         return jsonify({"error": "Failed generating instant clip. Ensure the stream is actively recording."}), 400
     return jsonify({"success": True, "clip": clip})
+
+
+@app.post("/api/live/batch-clip")
+def live_batch_clip():
+    data = request.get_json(silent=True) or {}
+    count = int(data.get("count", 4))
+    duration = int(data.get("duration", 30))
+    mgr = _get_live_studio_mgr()
+    clips = mgr.batch_clip(count=count, duration_sec=duration)
+    if not clips:
+        return jsonify({"error": "Failed generating batch clips. Ensure the stream is actively recording."}), 400
+    return jsonify({"success": True, "clips": clips, "count": len(clips)})
 
 
 @app.delete("/api/live/clips/<clip_id>")
@@ -1199,6 +1234,15 @@ def live_media(filename: str):
     mgr = _get_live_studio_mgr()
     clips_dir = mgr.clips_dir
     return send_from_directory(str(clips_dir), filename)
+
+
+@app.get("/api/live/preview-frame")
+def live_preview_frame():
+    mgr = _get_live_studio_mgr()
+    preview_file = mgr.buffer_dir / "preview_current.jpg"
+    if preview_file.exists() and preview_file.stat().st_size > 0:
+        return send_file(str(preview_file), mimetype="image/jpeg", max_age=1)
+    return ("", 204)
 
 
 @app.get("/api/narrate/videos")

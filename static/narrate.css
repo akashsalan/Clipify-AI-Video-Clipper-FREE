@@ -14,3 +14,19 @@
 .extra-download-stats{color:var(--muted);font:11px system-ui;font-variant-numeric:tabular-nums}
 .extra-download-track{height:8px;background:rgba(255,255,255,0.06);border-radius:99px;overflow:hidden;position:relative}
 .extra-download-bar{height:100%;width:0%;background:#ffffff;border-radius:99px;transition:width .25s ease-out}
+
+.nav-beta-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 5px;
+  margin-left: 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #a1a1aa;
+  line-height: 1;
+}

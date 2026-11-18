@@ -59,25 +59,41 @@ class LiveStudioManager:
         self.live_events: list[dict[str, Any]] = []
         self.recent_transcripts: list[dict[str, Any]] = []
         self.clips: list[dict[str, Any]] = []
+        self.editing_prefs: dict[str, Any] = {
+            "auto_edit": True,
+            "auto_captions": True,
+            "face_tracking": True,
+            "gaming_layout": True,
+            "caption_style": "highlight",
+            "caption_font": "Montserrat Extra Bold",
+            "background_style": "soft_blur",
+            "background_color": "#000000",
+            "custom_text": "",
+            "custom_text_pos": "top-center",
+            "custom_text_color": "#FFFFFF",
+        }
 
         self._lock = threading.Lock()
         self._load_saved_clips()
 
     def _load_saved_clips(self) -> None:
         """Load any existing clips from previous sessions on disk."""
-        self.clips.clear()
-        if not self.clips_dir.exists():
-            return
-        for clip_folder in self.clips_dir.iterdir():
-            if clip_folder.is_dir():
-                meta_json = clip_folder / "meta.json"
-                if meta_json.exists():
-                    try:
-                        data = json.loads(meta_json.read_text(encoding="utf-8"))
-                        self.clips.append(data)
-                    except Exception:
-                        pass
-        self.clips.sort(key=lambda c: c.get("created_at", 0), reverse=True)
+        with self._lock:
+            self.clips.clear()
+            if not self.clips_dir.exists():
+                return
+            for clip_folder in self.clips_dir.iterdir():
+                if clip_folder.is_dir():
+                    meta_json = clip_folder / "meta.json"
+                    if meta_json.exists():
+                        try:
+                            data = json.loads(meta_json.read_text(encoding="utf-8"))
+                            if not data.get("badges"):
+                                data["badges"] = ["✨ Smart Fit", "💬 Auto Captions"]
+                            self.clips.append(data)
+                        except Exception:
+                            pass
+            self.clips.sort(key=lambda c: c.get("created_at", 0), reverse=True)
 
     def get_obs_config(self) -> dict[str, str]:
         """Return OBS Studio connection parameters."""
@@ -87,6 +103,20 @@ class LiveStudioManager:
             "instructions": "In OBS Studio, open Settings -> Stream -> Service: Custom -> Server: rtmp://127.0.0.1:1935/live -> Stream Key: stream -> Click Start Streaming.",
         }
 
+    def update_editing_prefs(self, prefs: dict[str, Any]) -> dict[str, Any]:
+        """Update live Short editing preferences (auto_edit, face_tracking, captions, layout, font, custom text, background)."""
+        with self._lock:
+            for k in ("auto_edit", "auto_captions", "face_tracking", "gaming_layout"):
+                if k in prefs:
+                    self.editing_prefs[k] = bool(prefs[k])
+            for k in (
+                "caption_style", "caption_font", "background_style", "background_color",
+                "custom_text", "custom_text_pos", "custom_text_color",
+            ):
+                if k in prefs:
+                    self.editing_prefs[k] = str(prefs[k])
+            return dict(self.editing_prefs)
+
     def start_session(
         self,
         source_type: str,
@@ -95,6 +125,7 @@ class LiveStudioManager:
         sensitivity: int = 5,
         buffer_minutes: int = 10,
         model_name: str = "qwen2.5:3b",
+        editing_prefs: Optional[dict[str, Any]] = None,
     ) -> tuple[bool, str]:
         """Initialize and start a live studio monitoring session."""
         with self._lock:
@@ -106,6 +137,16 @@ class LiveStudioManager:
             self.auto_clip_enabled = auto_clip
             self.sensitivity = max(1, min(10, sensitivity))
             self.buffer_minutes = max(3, min(30, buffer_minutes))
+            if editing_prefs:
+                for k in ("auto_edit", "auto_captions", "face_tracking", "gaming_layout"):
+                    if k in editing_prefs:
+                        self.editing_prefs[k] = bool(editing_prefs[k])
+                for k in (
+                    "caption_style", "caption_font", "background_style", "background_color",
+                    "custom_text", "custom_text_pos", "custom_text_color",
+                ):
+                    if k in editing_prefs:
+                        self.editing_prefs[k] = str(editing_prefs[k])
 
             # Initialize components
             self.buffer = RollingBuffer(
@@ -194,10 +235,14 @@ class LiveStudioManager:
     def _on_status_change(self, status: str, detail: str) -> None:
         self.status = status
         self.status_detail = detail
+        if status in ("failed", "disconnected") and status == "failed":
+            self.session_active = False
         self._emit_event("status_change", {"status": status, "detail": detail})
 
     def _on_connector_error(self, err_msg: str) -> None:
+        self.status = "failed"
         self.status_detail = f"Stream error: {err_msg}"
+        self.session_active = False
         self._emit_event("stream_error", {"error": err_msg})
 
     def _on_segment_ready(self, chunk_path: Path, index: int, stream_elapsed: float) -> None:
@@ -248,12 +293,24 @@ class LiveStudioManager:
             "score": candidate.score,
         })
 
+        with self._lock:
+            transcripts = [
+                t for t in self.recent_transcripts
+                if t.get("start", 0) <= candidate.end_sec and t.get("end", 0) >= candidate.start_sec
+            ]
+            if not transcripts:
+                transcripts = list(self.recent_transcripts[-10:])
+            prefs = dict(self.editing_prefs)
+
         clip_data = self.generator.render_clip(
             start_sec=candidate.start_sec,
             end_sec=candidate.end_sec,
             title=candidate.title,
             category=candidate.category,
             subtitle_text=candidate.transcript_snippet,
+            transcripts=transcripts,
+            editing_prefs=prefs,
+            energy_score=candidate.score,
         )
 
         if clip_data:
@@ -282,11 +339,22 @@ class LiveStudioManager:
                     words = last_txt.split()[:5]
                     title = " ".join(words).title() + "!"
 
+            transcripts = [
+                t for t in self.recent_transcripts
+                if t.get("start", 0) <= end_sec and t.get("end", 0) >= start_sec
+            ]
+            if not transcripts:
+                transcripts = list(self.recent_transcripts[-10:])
+            prefs = dict(self.editing_prefs)
+
             clip_data = self.generator.render_clip(
                 start_sec=start_sec,
                 end_sec=end_sec,
                 title=title,
                 category=category,
+                transcripts=transcripts,
+                editing_prefs=prefs,
+                energy_score=8.0,
             )
 
             if clip_data:
@@ -295,6 +363,69 @@ class LiveStudioManager:
                 return clip_data
 
             return None
+
+    def batch_clip(self, count: int = 4, duration_sec: int = 30) -> list[dict[str, Any]]:
+        """Generate N professionally edited Shorts from the rolling buffer."""
+        count = max(1, min(10, int(count)))
+        duration_sec = max(10, min(90, int(duration_sec)))
+
+        with self._lock:
+            if not self.session_active or not self.buffer or not self.generator:
+                return []
+            current_time = (time.time() - self.session_start_time) if self.session_start_time else 0.0
+            buf_duration = self.buffer.get_window_duration()
+            available_start = max(0.0, current_time - buf_duration)
+            transcripts_copy = list(self.recent_transcripts)
+            prefs = dict(self.editing_prefs)
+
+        intervals: list[tuple[float, float, str]] = []
+
+        # 1. Look for distinct speech burst groups
+        if len(transcripts_copy) >= count * 2:
+            step = max(1, len(transcripts_copy) // count)
+            for i in range(count):
+                sub = transcripts_copy[i * step : (i + 1) * step]
+                if sub:
+                    s = max(available_start, float(sub[0].get("start", current_time - duration_sec)))
+                    e = min(current_time, float(sub[-1].get("end", s + duration_sec)))
+                    if e - s < 8.0:
+                        e = min(current_time, s + duration_sec)
+                    words = sub[0].get("text", "").split()[:4]
+                    t_title = (" ".join(words).title() + "!") if words else f"Live Highlight #{len(self.clips) + len(intervals) + 1}"
+                    intervals.append((s, e, t_title))
+
+        # 2. Fill remaining intervals by staggering across the available buffer
+        if len(intervals) < count:
+            span = max(float(count * 12), current_time - available_start)
+            slice_dur = min(float(duration_sec), max(10.0, span / count))
+            for i in range(count - len(intervals)):
+                end_i = current_time - (i * slice_dur * 0.85)
+                start_i = max(available_start, end_i - slice_dur)
+                if end_i - start_i >= 6.0:
+                    intervals.append((start_i, end_i, f"Live Highlight #{len(self.clips) + len(intervals) + 1}"))
+
+        generated: list[dict[str, Any]] = []
+        for s_time, e_time, title in intervals[:count]:
+            sub_transcripts = [
+                t for t in transcripts_copy
+                if t.get("start", 0) <= e_time and t.get("end", 0) >= s_time
+            ]
+            clip_data = self.generator.render_clip(
+                start_sec=s_time,
+                end_sec=e_time,
+                title=title,
+                category="High-energy moments",
+                transcripts=sub_transcripts,
+                editing_prefs=prefs,
+                energy_score=8.5,
+            )
+            if clip_data:
+                with self._lock:
+                    self.clips.insert(0, clip_data)
+                self._emit_event("new_clip", clip_data)
+                generated.append(clip_data)
+
+        return generated
 
     def delete_clip(self, clip_id: str) -> bool:
         """Delete a generated clip from memory and disk."""
@@ -312,11 +443,12 @@ class LiveStudioManager:
     def get_status(self) -> dict[str, Any]:
         """Return the current Live Studio state."""
         elapsed = 0.0
-        if self.session_active and self.session_start_time:
+        if self.session_active and self.session_start_time and self.status == "live":
             elapsed = time.time() - self.session_start_time
 
         buf_dur = self.buffer.get_window_duration() if self.buffer else 0.0
         buf_chunks = self.buffer.get_total_chunks() if self.buffer else 0
+        has_preview = bool(self.buffer_dir and (self.buffer_dir / "preview_current.jpg").exists())
 
         return {
             "session_active": self.session_active,
@@ -331,6 +463,8 @@ class LiveStudioManager:
             "sensitivity": self.sensitivity,
             "metadata": self.stream_metadata,
             "clips_count": len(self.clips),
+            "has_preview": has_preview,
+            "editing_prefs": dict(self.editing_prefs),
         }
 
     def get_recent_transcripts(self) -> list[dict[str, Any]]:
@@ -367,3 +501,4 @@ def get_live_manager(data_dir: Path, ffmpeg_bin: str, python_bin: str) -> LiveSt
                 python_bin=python_bin,
             )
         return _LIVE_MANAGER
+

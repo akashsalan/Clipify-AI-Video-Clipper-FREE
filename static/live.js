@@ -1,5 +1,6 @@
 /**
  * Clipify AI - Live Studio Frontend Controller
+ * Minimal Monochrome Workspace (Tweak IDE Inspired)
  */
 (function() {
   'use strict';
@@ -7,33 +8,89 @@
   let pollInterval = null;
   let currentSourceType = 'youtube';
   let isSessionActive = false;
+  let lastPreviewFetch = 0;
 
   // DOM Elements
   const sourceTabs = document.querySelectorAll('.source-tab');
   const liveSourceUrl = document.getElementById('liveSourceUrl');
   const btnConnectStream = document.getElementById('btnConnectStream');
   const btnDisconnectStream = document.getElementById('btnDisconnectStream');
+  const btnConnectObs = document.getElementById('btnConnectObs');
+  const btnDisconnectObs = document.getElementById('btnDisconnectObs');
+  const btnRetryConnection = document.getElementById('btnRetryConnection');
   const btnInstantClip = document.getElementById('btnInstantClip');
   const streamLiveBadge = document.getElementById('streamLiveBadge');
   const streamLiveText = document.getElementById('streamLiveText');
   const monitorTitle = document.getElementById('monitorTitle');
   const streamAuthor = document.getElementById('streamAuthor');
+  const streamOverlayTitle = document.getElementById('streamOverlayTitle');
   const telemetryElapsed = document.getElementById('telemetryElapsed');
   const telemetryBuffer = document.getElementById('telemetryBuffer');
   const telemetryChunks = document.getElementById('telemetryChunks');
-  const monitorPlaceholder = document.getElementById('monitorPlaceholder');
-  const monitorActiveView = document.getElementById('monitorActiveView');
+  const overlayElapsed = document.getElementById('overlayElapsed');
+  const overlayBuffer = document.getElementById('overlayBuffer');
+
+  // Monitor screen states
+  const monitorIdleView = document.getElementById('monitorIdleView');
+  const monitorLoadingView = document.getElementById('monitorLoadingView');
+  const monitorLoadingTitle = document.getElementById('monitorLoadingTitle');
+  const monitorLoadingDetail = document.getElementById('monitorLoadingDetail');
+  const monitorLiveView = document.getElementById('monitorLiveView');
+  const monitorVideoFrame = document.getElementById('monitorVideoFrame');
+  const monitorFailedView = document.getElementById('monitorFailedView');
+  const monitorFailedTitle = document.getElementById('monitorFailedTitle');
+  const monitorFailedDetail = document.getElementById('monitorFailedDetail');
+
+  // Feeds and Gallery
   const transcriptFeed = document.getElementById('transcriptFeed');
   const liveClipsGrid = document.getElementById('liveClipsGrid');
   const emptyClipsMsg = document.getElementById('emptyClipsMsg');
   const clipsCount = document.getElementById('clipsCount');
   const obsConfigBox = document.getElementById('obsConfigBox');
   const youtubeInputGroup = document.getElementById('youtubeInputGroup');
+
+  // Preferences
   const sensitivitySlider = document.getElementById('sensitivitySlider');
   const sensitivityOut = document.getElementById('sensitivityOut');
   const toggleAutoClip = document.getElementById('toggleAutoClip');
+  const chipAutoClip = document.getElementById('chipAutoClip');
+  const chipSensitivity = document.getElementById('chipSensitivity');
   const bufferWindowSelect = document.getElementById('bufferWindowSelect');
   const liveModelSelect = document.getElementById('liveModelSelect');
+  const clipFormatSelect = document.getElementById('clipFormatSelect');
+
+  // AI Smart Editing Preferences
+  const toggleAutoEdit = document.getElementById('toggleAutoEdit');
+  const toggleFaceTrack = document.getElementById('toggleFaceTrack');
+  const toggleGamingLayout = document.getElementById('toggleGamingLayout');
+  const toggleAutoCaptions = document.getElementById('toggleAutoCaptions');
+  const captionStyleSelect = document.getElementById('captionStyleSelect');
+  const captionFontSelect = document.getElementById('captionFontSelect');
+  const bgStyleSelect = document.getElementById('bgStyleSelect');
+  const bgColorWrapper = document.getElementById('bgColorWrapper');
+  const bgColorPicker = document.getElementById('bgColorPicker');
+  const bgColorHex = document.getElementById('bgColorHex');
+  const toggleCustomText = document.getElementById('toggleCustomText');
+  const customTextSection = document.getElementById('customTextSection');
+  const customTextInput = document.getElementById('customTextInput');
+  const customTextPos = document.getElementById('customTextPos');
+  const customTextColorPicker = document.getElementById('customTextColorPicker');
+  const customTextColorHex = document.getElementById('customTextColorHex');
+  const prefTargetClips = document.getElementById('prefTargetClips');
+
+  // Live Stream Player & Connected Controls
+  const monitorLiveEmbed = document.getElementById('monitorLiveEmbed');
+  const monitorViewToggles = document.getElementById('monitorViewToggles');
+  const btnToggleLivePlayer = document.getElementById('btnToggleLivePlayer');
+  const btnToggleSnapshot = document.getElementById('btnToggleSnapshot');
+  const liveConnectedControls = document.getElementById('liveConnectedControls');
+  const btnLiveClipNow = document.getElementById('btnLiveClipNow');
+  const liveBatchCountSelect = document.getElementById('liveBatchCountSelect');
+  const btnBatchClip = document.getElementById('btnBatchClip');
+  const batchCountNum = document.getElementById('batchCountNum');
+
+  let currentSelectedDuration = 30;
+  let showingSnapshotMode = false;
 
   // Modal elements
   const clipPreviewModal = document.getElementById('clipPreviewModal');
@@ -46,7 +103,7 @@
   function init() {
     setupTabs();
     setupActions();
-    setupSensitivity();
+    setupPreferences();
     setupModal();
     setupCopyButtons();
     startPolling();
@@ -67,15 +124,19 @@
           youtubeInputGroup.style.display = 'block';
           if (currentSourceType === 'youtube') {
             liveSourceUrl.placeholder = 'https://www.youtube.com/watch?v=... or https://www.youtube.com/live/...';
+            const hint = document.getElementById('sourceHelpText');
+            if (hint) hint.textContent = 'Supports standard YouTube Live stream links and channel /live URLs.';
           } else if (currentSourceType === 'tiktok') {
             liveSourceUrl.placeholder = 'https://www.tiktok.com/@username/live';
+            const hint = document.getElementById('sourceHelpText');
+            if (hint) hint.textContent = 'Direct stream link or TikTok user live room. OBS fallback recommended.';
           }
         }
       });
     });
   }
 
-  function setupSensitivity() {
+  function setupPreferences() {
     if (sensitivitySlider && sensitivityOut) {
       sensitivitySlider.addEventListener('input', (e) => {
         const val = parseInt(e.target.value, 10);
@@ -83,6 +144,88 @@
         if (val <= 3) label = 'Conservative';
         else if (val >= 8) label = 'High Frequency';
         sensitivityOut.textContent = `${val} (${label})`;
+        if (chipSensitivity) chipSensitivity.textContent = `Sensitivity: ${val}`;
+      });
+    }
+
+    if (toggleAutoClip && chipAutoClip) {
+      toggleAutoClip.addEventListener('change', () => {
+        chipAutoClip.textContent = toggleAutoClip.checked ? 'Auto-Clip: ON' : 'Auto-Clip: OFF';
+      });
+    }
+
+    function sendLivePrefs() {
+      const payload = {
+        auto_edit: toggleAutoEdit ? toggleAutoEdit.checked : true,
+        face_tracking: toggleFaceTrack ? toggleFaceTrack.checked : true,
+        gaming_layout: toggleGamingLayout ? toggleGamingLayout.checked : true,
+        auto_captions: toggleAutoCaptions ? toggleAutoCaptions.checked : true,
+        caption_style: captionStyleSelect ? captionStyleSelect.value : 'highlight',
+        caption_font: captionFontSelect ? captionFontSelect.value : 'Montserrat Extra Bold',
+        background_style: bgStyleSelect ? bgStyleSelect.value : 'soft_blur',
+        background_color: bgColorHex ? bgColorHex.value : '#000000',
+        custom_text: (toggleCustomText && toggleCustomText.checked && customTextInput) ? customTextInput.value.trim() : '',
+        custom_text_pos: customTextPos ? customTextPos.value : 'top-center',
+        custom_text_color: customTextColorHex ? customTextColorHex.value : '#FFFFFF',
+      };
+      fetch('/api/live/preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+    }
+
+    [toggleAutoEdit, toggleFaceTrack, toggleGamingLayout, toggleAutoCaptions, captionStyleSelect, captionFontSelect].forEach(el => {
+      if (el) el.addEventListener('change', sendLivePrefs);
+    });
+
+    if (bgStyleSelect && bgColorWrapper) {
+      bgStyleSelect.addEventListener('change', () => {
+        bgColorWrapper.style.display = (bgStyleSelect.value === 'custom_color') ? 'block' : 'none';
+        sendLivePrefs();
+      });
+    }
+
+    if (bgColorPicker && bgColorHex) {
+      bgColorPicker.addEventListener('input', () => {
+        bgColorHex.value = bgColorPicker.value;
+        sendLivePrefs();
+      });
+      bgColorHex.addEventListener('input', () => {
+        if (/^#[0-9A-Fa-f]{6}$/.test(bgColorHex.value)) {
+          bgColorPicker.value = bgColorHex.value;
+          sendLivePrefs();
+        }
+      });
+    }
+
+    if (toggleCustomText && customTextSection) {
+      toggleCustomText.addEventListener('change', () => {
+        customTextSection.style.display = toggleCustomText.checked ? 'block' : 'none';
+        sendLivePrefs();
+      });
+    }
+
+    if (customTextInput) {
+      customTextInput.addEventListener('input', () => {
+        sendLivePrefs();
+      });
+    }
+
+    if (customTextPos) {
+      customTextPos.addEventListener('change', sendLivePrefs);
+    }
+
+    if (customTextColorPicker && customTextColorHex) {
+      customTextColorPicker.addEventListener('input', () => {
+        customTextColorHex.value = customTextColorPicker.value;
+        sendLivePrefs();
+      });
+      customTextColorHex.addEventListener('input', () => {
+        if (/^#[0-9A-Fa-f]{6}$/.test(customTextColorHex.value)) {
+          customTextColorPicker.value = customTextColorHex.value;
+          sendLivePrefs();
+        }
       });
     }
   }
@@ -112,85 +255,252 @@
   }
 
   function setupActions() {
-    btnConnectStream.addEventListener('click', async () => {
-      btnConnectStream.disabled = true;
-      btnConnectStream.textContent = 'Connecting...';
+    // Connect YouTube or TikTok
+    btnConnectStream.addEventListener('click', () => startConnection(false));
 
-      let sourceUrl = liveSourceUrl.value.trim();
-      if (currentSourceType === 'obs' && !sourceUrl) {
-        sourceUrl = 'rtmp://127.0.0.1:1935/live/stream';
-      }
+    // Connect OBS
+    if (btnConnectObs) {
+      btnConnectObs.addEventListener('click', () => startConnection(true));
+    }
 
-      try {
-        const resp = await fetch('/api/live/connect', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            source_type: currentSourceType,
-            source_url: sourceUrl,
-            auto_clip: toggleAutoClip ? toggleAutoClip.checked : true,
-            sensitivity: sensitivitySlider ? parseInt(sensitivitySlider.value, 10) : 5,
-            buffer_minutes: bufferWindowSelect ? parseInt(bufferWindowSelect.value, 10) : 10,
-            model_name: liveModelSelect ? liveModelSelect.value : 'qwen2.5:3b',
-          }),
-        });
+    // Disconnect YouTube or TikTok
+    btnDisconnectStream.addEventListener('click', stopConnection);
 
-        const data = await resp.json();
-        if (!resp.ok) {
-          alert('Failed to connect: ' + (data.error || 'Unknown error'));
-          btnConnectStream.disabled = false;
-          btnConnectStream.textContent = 'Connect & Start Clipping';
-          return;
-        }
+    // Disconnect OBS
+    if (btnDisconnectObs) {
+      btnDisconnectObs.addEventListener('click', stopConnection);
+    }
 
-        updateUIStatus(data.status);
-      } catch (err) {
-        alert('Connection error: ' + err.message);
-        btnConnectStream.disabled = false;
-        btnConnectStream.textContent = 'Connect & Start Clipping';
-      }
-    });
+    // Retry button on failure
+    if (btnRetryConnection) {
+      btnRetryConnection.addEventListener('click', () => {
+        setMonitorState('idle');
+        liveSourceUrl.focus();
+      });
+    }
 
-    btnDisconnectStream.addEventListener('click', async () => {
-      btnDisconnectStream.disabled = true;
-      try {
-        await fetch('/api/live/disconnect', { method: 'POST' });
-        fetchStatus();
-      } catch (err) {
-        console.error('Disconnect error:', err);
-      } finally {
-        btnDisconnectStream.disabled = false;
-      }
-    });
-
+    // Instant Clip in Header (30s)
     btnInstantClip.addEventListener('click', async () => {
-      btnInstantClip.disabled = true;
-      const originalText = btnInstantClip.textContent;
-      btnInstantClip.textContent = 'Generating 30s Short...';
+      triggerInstantClip(currentSelectedDuration || 30, btnInstantClip);
+    });
 
+    // Duration quick pills
+    document.querySelectorAll('.clip-duration-pills .pill-btn').forEach(pill => {
+      pill.addEventListener('click', () => {
+        document.querySelectorAll('.clip-duration-pills .pill-btn').forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        currentSelectedDuration = parseInt(pill.dataset.dur, 10) || 30;
+        if (btnLiveClipNow) {
+          const small = btnLiveClipNow.querySelector('small');
+          if (small) small.textContent = `Capture & auto-edit ${currentSelectedDuration}s Short`;
+        }
+      });
+    });
+
+    // Dedicated Live Clip Button (Under Monitor)
+    if (btnLiveClipNow) {
+      btnLiveClipNow.addEventListener('click', async () => {
+        triggerInstantClip(currentSelectedDuration, btnLiveClipNow);
+      });
+    }
+
+    // Number of Clips selector & Batch Clip button
+    if (liveBatchCountSelect && batchCountNum) {
+      liveBatchCountSelect.addEventListener('change', () => {
+        batchCountNum.textContent = liveBatchCountSelect.value;
+        if (prefTargetClips) prefTargetClips.value = liveBatchCountSelect.value;
+      });
+    }
+    if (prefTargetClips && liveBatchCountSelect) {
+      prefTargetClips.addEventListener('change', () => {
+        if (prefTargetClips.value !== 'auto') {
+          liveBatchCountSelect.value = prefTargetClips.value;
+          if (batchCountNum) batchCountNum.textContent = prefTargetClips.value;
+        }
+      });
+    }
+
+    if (btnBatchClip) {
+      btnBatchClip.addEventListener('click', async () => {
+        const count = parseInt(liveBatchCountSelect ? liveBatchCountSelect.value : 4, 10) || 4;
+        btnBatchClip.disabled = true;
+        const origHtml = btnBatchClip.innerHTML;
+        btnBatchClip.innerHTML = `<span>⏳ Creating ${count} Shorts…</span>`;
+        try {
+          const resp = await fetch('/api/live/batch-clip', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ count: count, duration: currentSelectedDuration }),
+          });
+          const data = await resp.json();
+          if (resp.ok && data.clips) {
+            await fetchClips();
+          } else {
+            alert(data.error || 'Could not generate batch clips.');
+          }
+        } catch (err) {
+          alert('Batch clip error: ' + err.message);
+        } finally {
+          btnBatchClip.disabled = false;
+          btnBatchClip.innerHTML = origHtml;
+        }
+      });
+    }
+
+    // Live Stream Player vs Snapshot Toggles
+    if (btnToggleLivePlayer && btnToggleSnapshot) {
+      btnToggleLivePlayer.addEventListener('click', () => {
+        showingSnapshotMode = false;
+        btnToggleLivePlayer.classList.add('active');
+        btnToggleSnapshot.classList.remove('active');
+        if (monitorLiveEmbed && monitorLiveEmbed.src) {
+          monitorLiveEmbed.style.display = 'block';
+          if (monitorVideoFrame) monitorVideoFrame.style.display = 'none';
+        }
+      });
+      btnToggleSnapshot.addEventListener('click', () => {
+        showingSnapshotMode = true;
+        btnToggleSnapshot.classList.add('active');
+        btnToggleLivePlayer.classList.remove('active');
+        if (monitorLiveEmbed) monitorLiveEmbed.style.display = 'none';
+        if (monitorVideoFrame) monitorVideoFrame.style.display = 'block';
+      });
+    }
+
+    // Refresh Clips Button with live spinner and feedback
+    const btnRefreshClips = document.getElementById('btnRefreshClips');
+    if (btnRefreshClips) {
+      btnRefreshClips.addEventListener('click', async () => {
+        const orig = btnRefreshClips.innerHTML;
+        btnRefreshClips.disabled = true;
+        btnRefreshClips.innerHTML = '↻ Refreshing…';
+        btnRefreshClips.classList.add('refresh-spinning');
+        try {
+          await fetchClips();
+          btnRefreshClips.innerHTML = '✓ Refreshed';
+        } catch (e) {
+          btnRefreshClips.innerHTML = '⚠ Failed';
+        } finally {
+          setTimeout(() => {
+            btnRefreshClips.innerHTML = orig;
+            btnRefreshClips.disabled = false;
+            btnRefreshClips.classList.remove('refresh-spinning');
+          }, 800);
+        }
+      });
+    }
+  }
+
+  async function triggerInstantClip(duration, triggerBtn) {
+    if (triggerBtn) {
+      triggerBtn.disabled = true;
+      const originalText = triggerBtn.innerHTML;
+      triggerBtn.innerHTML = `<span>⏳ Rendering ${duration}s Short…</span>`;
       try {
         const resp = await fetch('/api/live/instant-clip', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ duration: 30 }),
+          body: JSON.stringify({ duration: duration }),
         });
         const data = await resp.json();
         if (resp.ok && data.clip) {
-          fetchClips();
+          await fetchClips();
         } else {
           alert(data.error || 'Could not generate instant clip.');
         }
       } catch (err) {
         alert('Instant clip error: ' + err.message);
       } finally {
-        btnInstantClip.disabled = false;
-        btnInstantClip.textContent = originalText;
+        triggerBtn.disabled = false;
+        triggerBtn.innerHTML = originalText;
       }
-    });
+    }
+  }
 
-    const btnRefreshClips = document.getElementById('btnRefreshClips');
-    if (btnRefreshClips) {
-      btnRefreshClips.addEventListener('click', fetchClips);
+  async function startConnection(isObs) {
+    const connectBtn = isObs ? btnConnectObs : btnConnectStream;
+    connectBtn.disabled = true;
+    connectBtn.textContent = 'Connecting...';
+
+    let sourceUrl = isObs ? 'rtmp://0.0.0.0:1935/live/stream' : liveSourceUrl.value.trim();
+    const sourceType = isObs ? 'obs' : currentSourceType;
+
+    setMonitorState('loading', 'Connecting...', 'Initiating live stream session');
+
+    try {
+      const resp = await fetch('/api/live/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_type: sourceType,
+          source_url: sourceUrl,
+          auto_clip: toggleAutoClip ? toggleAutoClip.checked : true,
+          sensitivity: sensitivitySlider ? parseInt(sensitivitySlider.value, 10) : 5,
+          buffer_minutes: bufferWindowSelect ? parseInt(bufferWindowSelect.value, 10) : 10,
+          model_name: liveModelSelect ? liveModelSelect.value : 'qwen2.5:3b',
+          auto_edit: toggleAutoEdit ? toggleAutoEdit.checked : true,
+          face_tracking: toggleFaceTrack ? toggleFaceTrack.checked : true,
+          gaming_layout: toggleGamingLayout ? toggleGamingLayout.checked : true,
+          auto_captions: toggleAutoCaptions ? toggleAutoCaptions.checked : true,
+          caption_style: captionStyleSelect ? captionStyleSelect.value : 'highlight',
+          caption_font: captionFontSelect ? captionFontSelect.value : 'Montserrat Extra Bold',
+          background_style: bgStyleSelect ? bgStyleSelect.value : 'soft_blur',
+          background_color: bgColorHex ? bgColorHex.value : '#000000',
+          custom_text: (toggleCustomText && toggleCustomText.checked && customTextInput) ? customTextInput.value.trim() : '',
+          custom_text_pos: customTextPos ? customTextPos.value : 'top-center',
+          custom_text_color: customTextColorHex ? customTextColorHex.value : '#FFFFFF',
+        }),
+      });
+
+      const data = await resp.json();
+      if (!resp.ok) {
+        setMonitorState('failed', 'Connection Failed', data.error || 'Could not connect');
+        connectBtn.disabled = false;
+        connectBtn.textContent = isObs ? 'Start Listening for OBS' : 'Connect & Start Clipping';
+        return;
+      }
+
+      updateUIStatus(data.status);
+    } catch (err) {
+      setMonitorState('failed', 'Network Error', err.message);
+      connectBtn.disabled = false;
+      connectBtn.textContent = isObs ? 'Start Listening for OBS' : 'Connect & Start Clipping';
+    }
+  }
+
+  async function stopConnection() {
+    btnDisconnectStream.disabled = true;
+    if (btnDisconnectObs) btnDisconnectObs.disabled = true;
+
+    try {
+      await fetch('/api/live/disconnect', { method: 'POST' });
+      fetchStatus();
+    } catch (err) {
+      console.error('Disconnect error:', err);
+    } finally {
+      btnDisconnectStream.disabled = false;
+      if (btnDisconnectObs) btnDisconnectObs.disabled = false;
+    }
+  }
+
+  function setMonitorState(state, title, detail) {
+    if (monitorIdleView) monitorIdleView.style.display = 'none';
+    if (monitorLoadingView) monitorLoadingView.style.display = 'none';
+    if (monitorLiveView) monitorLiveView.style.display = 'none';
+    if (monitorFailedView) monitorFailedView.style.display = 'none';
+
+    if (state === 'idle') {
+      if (monitorIdleView) monitorIdleView.style.display = 'flex';
+    } else if (state === 'loading') {
+      if (monitorLoadingView) monitorLoadingView.style.display = 'flex';
+      if (monitorLoadingTitle && title) monitorLoadingTitle.textContent = title;
+      if (monitorLoadingDetail && detail) monitorLoadingDetail.textContent = detail;
+    } else if (state === 'live') {
+      if (monitorLiveView) monitorLiveView.style.display = 'flex';
+    } else if (state === 'failed') {
+      if (monitorFailedView) monitorFailedView.style.display = 'flex';
+      if (monitorFailedTitle && title) monitorFailedTitle.textContent = title;
+      if (monitorFailedDetail && detail) monitorFailedDetail.textContent = detail;
     }
   }
 
@@ -237,46 +547,155 @@
 
   function updateUIStatus(statusData) {
     if (!statusData) return;
+    const st = (statusData.status || 'idle').toLowerCase();
     isSessionActive = Boolean(statusData.session_active);
 
-    // Live Badge & Actions
-    if (isSessionActive) {
+    // Telemetry numbers
+    const elapsedStr = statusData.elapsed_seconds ? formatDuration(statusData.elapsed_seconds) : '00:00:00';
+    const bufferSec = Math.round(statusData.buffer_duration_seconds || 0);
+    const chunksCount = statusData.buffer_chunks || 0;
+
+    if (telemetryElapsed) telemetryElapsed.textContent = elapsedStr;
+    if (telemetryBuffer) telemetryBuffer.textContent = `Buffer: ${bufferSec}s`;
+    if (telemetryChunks) telemetryChunks.textContent = `${chunksCount} chunks`;
+    if (overlayElapsed) overlayElapsed.textContent = elapsedStr;
+    if (overlayBuffer) overlayBuffer.textContent = `${bufferSec}s buf`;
+
+    // Metadata
+    if (statusData.metadata && statusData.metadata.title) {
+      if (monitorTitle) monitorTitle.textContent = statusData.metadata.title;
+      if (streamOverlayTitle) streamOverlayTitle.textContent = statusData.metadata.title;
+      if (statusData.metadata.author && streamAuthor) {
+        streamAuthor.textContent = statusData.metadata.author;
+      }
+    }
+
+    // State handling
+    if (st === 'live') {
       streamLiveBadge.className = 'live-badge active';
-      streamLiveText.textContent = statusData.status.toUpperCase();
+      streamLiveText.textContent = '● LIVE';
+
       btnConnectStream.style.display = 'none';
       btnDisconnectStream.style.display = 'inline-flex';
+      if (btnConnectObs) btnConnectObs.style.display = 'none';
+      if (btnDisconnectObs) btnDisconnectObs.style.display = 'inline-flex';
+
       btnInstantClip.disabled = false;
-      monitorPlaceholder.style.display = 'none';
-      monitorActiveView.style.display = 'flex';
-    } else {
+      if (liveConnectedControls) liveConnectedControls.style.display = 'flex';
+      setMonitorState('live');
+
+      // Check YouTube live stream URL for embedded playback
+      const streamUrl = statusData.source_url || (liveSourceUrl ? liveSourceUrl.value.trim() : '');
+      const ytId = extractYoutubeId(streamUrl);
+      if (ytId && monitorLiveEmbed) {
+        const expectedSrc = `https://www.youtube-nocookie.com/embed/${ytId}?autoplay=1&mute=0&controls=1&modestbranding=1&rel=0`;
+        if (!monitorLiveEmbed.src || !monitorLiveEmbed.src.includes(ytId)) {
+          monitorLiveEmbed.src = expectedSrc;
+        }
+        if (monitorViewToggles) monitorViewToggles.style.display = 'inline-flex';
+        if (!showingSnapshotMode) {
+          monitorLiveEmbed.style.display = 'block';
+          if (monitorVideoFrame) monitorVideoFrame.style.display = 'none';
+        } else {
+          monitorLiveEmbed.style.display = 'none';
+          if (monitorVideoFrame) monitorVideoFrame.style.display = 'block';
+        }
+      } else {
+        if (monitorLiveEmbed) {
+          monitorLiveEmbed.style.display = 'none';
+          monitorLiveEmbed.src = '';
+        }
+        if (monitorVideoFrame) monitorVideoFrame.style.display = 'block';
+        if (monitorViewToggles) monitorViewToggles.style.display = 'none';
+      }
+
+      // Refresh live video preview frame every 2 seconds for snapshot mode / OBS
+      const now = Date.now();
+      if (now - lastPreviewFetch > 2000 && monitorVideoFrame) {
+        lastPreviewFetch = now;
+        monitorVideoFrame.src = `/api/live/preview-frame?t=${now}`;
+      }
+    } else if (st === 'resolving' || st === 'connecting' || st === 'buffering' || st === 'listening') {
       streamLiveBadge.className = 'live-badge';
-      streamLiveText.textContent = 'IDLE';
+      streamLiveText.textContent = st.toUpperCase();
+
+      btnConnectStream.style.display = 'none';
+      btnDisconnectStream.style.display = 'inline-flex';
+      if (btnConnectObs) btnConnectObs.style.display = 'none';
+      if (btnDisconnectObs) btnDisconnectObs.style.display = 'inline-flex';
+
+      btnInstantClip.disabled = true;
+      if (liveConnectedControls) liveConnectedControls.style.display = 'none';
+      if (monitorLiveEmbed) {
+        monitorLiveEmbed.style.display = 'none';
+        monitorLiveEmbed.src = '';
+      }
+      if (monitorViewToggles) monitorViewToggles.style.display = 'none';
+
+      let title = 'Resolving Stream...';
+      if (st === 'connecting') title = 'Starting Ingestion Pipeline...';
+      else if (st === 'buffering') title = 'Buffering Media Packets...';
+      else if (st === 'listening') title = 'Listening for OBS Studio...';
+
+      setMonitorState('loading', title, statusData.status_detail || 'Processing live media feed');
+    } else if (st === 'failed') {
+      streamLiveBadge.className = 'live-badge';
+      streamLiveText.textContent = 'FAILED';
+
       btnConnectStream.style.display = 'inline-flex';
       btnConnectStream.disabled = false;
       btnConnectStream.textContent = 'Connect & Start Clipping';
       btnDisconnectStream.style.display = 'none';
-      btnInstantClip.disabled = true;
-      monitorPlaceholder.style.display = 'flex';
-      monitorActiveView.style.display = 'none';
-    }
 
-    // Telemetry
-    if (statusData.elapsed_seconds) {
-      telemetryElapsed.textContent = formatDuration(statusData.elapsed_seconds);
-    } else {
-      telemetryElapsed.textContent = '00:00:00';
-    }
-
-    telemetryBuffer.textContent = `Buffer: ${Math.round(statusData.buffer_duration_seconds || 0)}s`;
-    telemetryChunks.textContent = `${statusData.buffer_chunks || 0} chunks`;
-
-    // Metadata
-    if (statusData.metadata && statusData.metadata.title) {
-      monitorTitle.textContent = statusData.metadata.title;
-      if (statusData.metadata.author) {
-        streamAuthor.textContent = statusData.metadata.author;
+      if (btnConnectObs) {
+        btnConnectObs.style.display = 'inline-flex';
+        btnConnectObs.disabled = false;
+        btnConnectObs.textContent = 'Start Listening for OBS';
       }
+      if (btnDisconnectObs) btnDisconnectObs.style.display = 'none';
+
+      btnInstantClip.disabled = true;
+      if (liveConnectedControls) liveConnectedControls.style.display = 'none';
+      if (monitorLiveEmbed) {
+        monitorLiveEmbed.style.display = 'none';
+        monitorLiveEmbed.src = '';
+      }
+      if (monitorViewToggles) monitorViewToggles.style.display = 'none';
+
+      setMonitorState('failed', 'Connection Failed', statusData.status_detail || 'Stream is offline or URL is invalid');
+    } else {
+      // Idle or disconnected
+      streamLiveBadge.className = 'live-badge';
+      streamLiveText.textContent = 'IDLE';
+
+      btnConnectStream.style.display = 'inline-flex';
+      btnConnectStream.disabled = false;
+      btnConnectStream.textContent = 'Connect & Start Clipping';
+      btnDisconnectStream.style.display = 'none';
+
+      if (btnConnectObs) {
+        btnConnectObs.style.display = 'inline-flex';
+        btnConnectObs.disabled = false;
+        btnConnectObs.textContent = 'Start Listening for OBS';
+      }
+      if (btnDisconnectObs) btnDisconnectObs.style.display = 'none';
+
+      btnInstantClip.disabled = true;
+      if (liveConnectedControls) liveConnectedControls.style.display = 'none';
+      if (monitorLiveEmbed) {
+        monitorLiveEmbed.style.display = 'none';
+        monitorLiveEmbed.src = '';
+      }
+      if (monitorViewToggles) monitorViewToggles.style.display = 'none';
+
+      setMonitorState('idle');
     }
+  }
+
+  function extractYoutubeId(url) {
+    if (!url) return null;
+    const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|live\/))([\w-]{11})/);
+    return (match && match[1]) ? match[1] : null;
   }
 
   async function fetchTranscripts() {
@@ -294,7 +713,7 @@
       }
 
       transcriptFeed.innerHTML = '';
-      segments.slice(-20).forEach(seg => {
+      segments.slice(-25).forEach(seg => {
         const item = document.createElement('div');
         item.className = 'transcript-item';
         item.innerHTML = `
@@ -304,7 +723,6 @@
         transcriptFeed.appendChild(item);
       });
 
-      // Smooth scroll to bottom
       transcriptFeed.scrollTop = transcriptFeed.scrollHeight;
     } catch (err) {
       console.debug('Transcript error:', err);
@@ -318,45 +736,43 @@
       const data = await resp.json();
       const clips = data.clips || [];
 
-      clipsCount.textContent = clips.length;
+      if (clipsCount) clipsCount.textContent = clips.length;
 
       if (clips.length === 0) {
-        emptyClipsMsg.style.display = 'flex';
+        if (emptyClipsMsg) emptyClipsMsg.style.display = 'flex';
         return;
       }
 
-      emptyClipsMsg.style.display = 'none';
+      if (emptyClipsMsg) emptyClipsMsg.style.display = 'none';
       liveClipsGrid.innerHTML = '';
 
       clips.forEach(clip => {
         const card = document.createElement('div');
         card.className = 'live-clip-card';
+        const badges = (clip.badges && clip.badges.length > 0) ? clip.badges : ['✨ Smart Fit', '💬 Auto Captions'];
+        const badgesHtml = badges.map(b => `<span class="clip-badge-pill">${escapeHtml(b)}</span>`).join('');
+
         card.innerHTML = `
-          <div class="clip-thumb-box">
-            <img src="${clip.thumbnail}" alt="" class="clip-thumb" onerror="this.src='/static/icon.png'">
-            <span class="clip-badge">${escapeHtml(clip.category || 'Highlight')}</span>
-            <span class="clip-duration">${clip.duration}s</span>
-            <button type="button" class="play-overlay-btn" title="Preview Short">▶</button>
+          <div class="clip-thumb-wrap">
+            <img src="${clip.thumbnail}" alt="" onerror="this.src='/static/icon.png'">
+            <span class="clip-category-tag">${escapeHtml(clip.category || 'Highlight')}</span>
+            <span class="clip-duration-tag">${clip.duration}s</span>
           </div>
-          <div class="clip-details">
-            <h4 class="clip-title">${escapeHtml(clip.title)}</h4>
-            <div class="clip-meta">
-              <span>${clip.formatted_time || ''}</span>
-              <span>${clip.duration}s</span>
-            </div>
-            <div class="clip-actions">
-              <a href="${clip.vertical_video}" download="${escapeHtml(clip.title)}.mp4" class="primary mini-btn">Download 9:16 ↓</a>
-              <button type="button" class="ghost mini-btn delete-clip-btn" data-id="${clip.id}">✕</button>
+          <div class="clip-card-info">
+            <div class="clip-card-title">${escapeHtml(clip.title)}</div>
+            ${badgesHtml ? `<div class="clip-badges-row">${badgesHtml}</div>` : ''}
+            <div class="clip-card-actions">
+              <button type="button" class="primary play-clip-btn">Preview ▶</button>
+              <a href="${clip.vertical_video}" download="${escapeHtml(clip.title)}.mp4" class="ghost">Save ↓</a>
+              <button type="button" class="ghost delete-clip-btn" title="Delete Clip">✕</button>
             </div>
           </div>
         `;
 
-        // Card play preview
-        card.querySelector('.play-overlay-btn').addEventListener('click', () => {
+        card.querySelector('.play-clip-btn').addEventListener('click', () => {
           openPreviewModal(clip);
         });
 
-        // Delete button
         card.querySelector('.delete-clip-btn').addEventListener('click', async (e) => {
           e.stopPropagation();
           if (confirm('Delete this generated clip?')) {

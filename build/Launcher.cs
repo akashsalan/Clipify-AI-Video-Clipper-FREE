@@ -2,7 +2,21 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
+
+[assembly: AssemblyTitle("Clipify AI")]
+[assembly: AssemblyDescription("Clipify AI Video Clipper")]
+[assembly: AssemblyConfiguration("")]
+[assembly: AssemblyCompany("Clipify AI")]
+[assembly: AssemblyProduct("Clipify AI")]
+[assembly: AssemblyCopyright("Copyright © 2026 Clipify AI")]
+[assembly: AssemblyTrademark("")]
+[assembly: AssemblyCulture("")]
+[assembly: ComVisible(false)]
+[assembly: AssemblyVersion("3.2.1.0")]
+[assembly: AssemblyFileVersion("3.2.1.0")]
 
 namespace ClipifyAI
 {

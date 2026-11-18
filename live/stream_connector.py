@@ -34,6 +34,25 @@ def _hidden_flags() -> int:
     return getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
 
 
+def extract_preview_frame(chunk_path: Path, output_image: Path, ffmpeg_bin: str) -> bool:
+    """Extract a fast JPEG poster frame from a video segment."""
+    try:
+        cmd = [
+            ffmpeg_bin,
+            "-ss", "00:00:01",
+            "-i", str(chunk_path),
+            "-vframes", "1",
+            "-q:v", "3",
+            "-y",
+            str(output_image),
+        ]
+        res = subprocess.run(cmd, capture_output=True, timeout=5, creationflags=_hidden_flags())
+        return res.returncode == 0 and output_image.exists() and output_image.stat().st_size > 0
+    except Exception as e:
+        logger.debug("Failed extracting preview frame from %s: %s", chunk_path.name, e)
+        return False
+
+
 class StreamConnector:
     """Manages the ingestion subprocess and stream health."""
 
@@ -62,6 +81,7 @@ class StreamConnector:
         self.is_running = False
         self.process: Optional[subprocess.Popen] = None
         self.monitor_thread: Optional[threading.Thread] = None
+        self.stderr_thread: Optional[threading.Thread] = None
         self.stream_metadata: dict[str, Any] = {
             "title": "Live Stream",
             "author": "",
@@ -72,6 +92,9 @@ class StreamConnector:
         }
         self.connected_at: Optional[float] = None
         self.segments_recorded = 0
+        self.last_error: Optional[str] = None
+        self.status: str = "idle"
+        self.status_detail: str = "Ready"
         self._stop_event = threading.Event()
 
     def validate(self) -> tuple[bool, str]:
@@ -80,7 +103,6 @@ class StreamConnector:
             if not self.source_url:
                 return False, "Please enter a valid YouTube Live URL."
             if not YOUTUBE_LIVE_REGEX.search(self.source_url):
-                # Loose check for channel URLs
                 if "youtube.com" not in self.source_url:
                     return False, "Not a recognized YouTube live stream link."
             return True, ""
@@ -89,12 +111,20 @@ class StreamConnector:
                 return False, "Please enter a TikTok live URL or username."
             return True, ""
         elif self.source_type == "obs":
-            # OBS uses local socket ingestion; source_url is optional (defaults to 127.0.0.1:1935)
             return True, ""
         return False, f"Unsupported source type: {self.source_type}"
 
+    def _notify_status(self, status: str, detail: str) -> None:
+        self.status = status
+        self.status_detail = detail
+        if self.on_status_change:
+            try:
+                self.on_status_change(status, detail)
+            except Exception as e:
+                logger.debug("on_status_change callback failed: %s", e)
+
     def probe_metadata(self) -> dict[str, Any]:
-        """Probe stream details prior to / during capture."""
+        """Probe stream details prior to capture."""
         if self.source_type == "youtube":
             try:
                 cmd = [
@@ -132,6 +162,130 @@ class StreamConnector:
 
         return self.stream_metadata
 
+    def _resolve_youtube_stream(self) -> tuple[bool, list[str], str]:
+        """Resolve YouTube Live stream manifests using yt-dlp."""
+        self._notify_status("resolving", "Resolving YouTube Live stream feed...")
+        try:
+            cmd = [
+                self.python_bin, "-m", "yt_dlp",
+                "-g", "--no-warnings", "--no-playlist",
+                "-f", "bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/b",
+                "--socket-timeout", "15",
+                self.source_url,
+            ]
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=25,
+                creationflags=_hidden_flags(),
+            )
+            if proc.returncode != 0:
+                err = proc.stderr.strip()
+                logger.warning("yt-dlp stream resolution failed: %s", err)
+                clean_err = "Live stream is offline or link is invalid."
+                if "This live event will begin in" in err:
+                    clean_err = "This live stream has not started yet (scheduled event)."
+                elif "Private video" in err:
+                    clean_err = "This live stream is private."
+                elif "recording is not available" in err or "not available" in err:
+                    clean_err = "This live stream has ended or is unavailable."
+                elif err:
+                    first_err_line = [l for l in err.splitlines() if "ERROR:" in l]
+                    if first_err_line:
+                        clean_err = first_err_line[0].replace("ERROR: [youtube]", "").strip()
+                return False, [], clean_err
+
+            lines = [l.strip() for l in proc.stdout.strip().splitlines() if l.strip().startswith("http")]
+            if not lines:
+                return False, [], "No playable stream URL returned by yt-dlp."
+
+            logger.info("yt-dlp resolved %d stream manifest URL(s)", len(lines))
+            return True, lines, ""
+        except subprocess.TimeoutExpired:
+            return False, [], "Stream resolution timed out (25s)."
+        except Exception as e:
+            logger.exception("Error resolving YouTube stream: %s", e)
+            return False, [], str(e)
+
+    def _resolve_tiktok_stream(self) -> tuple[bool, list[str], str]:
+        """Resolve TikTok Live stream manifests or suggest OBS fallback."""
+        self._notify_status("resolving", "Resolving TikTok Live stream feed...")
+        try:
+            cmd = [
+                self.python_bin, "-m", "yt_dlp",
+                "-g", "--no-warnings", "--no-playlist",
+                "--socket-timeout", "10",
+                self.source_url,
+            ]
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=15,
+                creationflags=_hidden_flags(),
+            )
+            if proc.returncode == 0 and proc.stdout.strip():
+                lines = [l.strip() for l in proc.stdout.strip().splitlines() if l.strip().startswith("http")]
+                if lines:
+                    return True, lines, ""
+
+            return False, [], (
+                "TikTok Live direct extraction is restricted by platform security. "
+                "Please use OBS Studio: capture TikTok in OBS and stream directly to Clipify AI via RTMP."
+            )
+        except Exception as e:
+            return False, [], f"TikTok resolution failed: {e}. Please use the OBS Studio option."
+
+    def _build_ffmpeg_cmd(self, stream_urls: list[str]) -> list[str]:
+        """Construct the FFmpeg command for the configured source."""
+        out_pattern = str(self.buffer_dir / "chunk_%05d.mp4")
+
+        # High-performance encoding for rolling buffer segments
+        common_output = [
+            "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "160k", "-ar", "16000",
+            "-f", "segment",
+            "-segment_time", str(self.segment_duration),
+            "-segment_format", "mp4",
+            "-reset_timestamps", "1",
+            "-movflags", "+faststart+frag_keyframe+empty_moov",
+            "-y", out_pattern,
+        ]
+
+        if self.source_type == "obs":
+            rtmp_url = self.source_url if self.source_url.startswith("rtmp://") else "rtmp://0.0.0.0:1935/live/stream"
+            return [
+                self.ffmpeg_bin,
+                "-listen", "1",
+                "-i", rtmp_url,
+                *common_output,
+            ]
+
+        # Note: We intentionally avoid -reconnect_at_eof 1 as it breaks HLS playlist parsing
+        if len(stream_urls) >= 2:
+            # Dual manifests: stream_urls[0] = video, stream_urls[1] = audio
+            video_url, audio_url = stream_urls[0], stream_urls[1]
+            return [
+                self.ffmpeg_bin,
+                "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
+                "-i", video_url,
+                "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
+                "-i", audio_url,
+                "-map", "0:v:0",
+                "-map", "1:a:0",
+                *common_output,
+            ]
+        elif len(stream_urls) == 1:
+            # Single muxed stream
+            return [
+                self.ffmpeg_bin,
+                "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
+                "-i", stream_urls[0],
+                *common_output,
+            ]
+        else:
+            return [
+                self.ffmpeg_bin,
+                "-i", self.source_url,
+                *common_output,
+            ]
+
     def start(self) -> None:
         """Start capturing the stream into rolling buffer segments."""
         if self.is_running:
@@ -140,11 +294,11 @@ class StreamConnector:
         self.buffer_dir.mkdir(parents=True, exist_ok=True)
         self._stop_event.clear()
         self.is_running = True
-        self.connected_at = time.time()
+        self.connected_at = None
+        self.segments_recorded = 0
+        self.last_error = None
 
-        if self.on_status_change:
-            self.on_status_change("connecting", "Initializing live stream capture...")
-
+        self._notify_status("connecting", "Initializing live stream capture...")
         self.monitor_thread = threading.Thread(target=self._capture_loop, daemon=True)
         self.monitor_thread.start()
 
@@ -155,7 +309,7 @@ class StreamConnector:
         if self.process:
             try:
                 self.process.terminate()
-                self.process.wait(timeout=3)
+                self.process.wait(timeout=2)
             except Exception:
                 try:
                     self.process.kill()
@@ -163,109 +317,47 @@ class StreamConnector:
                     pass
             self.process = None
 
-        if self.on_status_change:
-            self.on_status_change("disconnected", "Live stream capture stopped.")
-
-    def _build_ffmpeg_args(self) -> list[str]:
-        """Construct the FFmpeg command for the configured source."""
-        out_pattern = str(self.buffer_dir / "chunk_%05d.mp4")
-
-        # Base segment options: h264 fast, aac 160k, rolling segment files
-        common_output = [
-            "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
-            "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-b:a", "160k", "-ar", "16000", "-ac", "1",
-            "-f", "segment",
-            "-segment_time", str(self.segment_duration),
-            "-segment_format", "mp4",
-            "-reset_timestamps", "1",
-            "-movflags", "+faststart+frag_keyframe+empty_moov",
-            "-y", out_pattern,
-        ]
-
-        if self.source_type == "obs":
-            # Listen on RTMP or fallback HTTP MPEG-TS
-            rtmp_url = self.source_url if self.source_url.startswith("rtmp://") else "rtmp://127.0.0.1:1935/live/stream"
-            return [
-                self.ffmpeg_bin, "-listen", "1", "-i", rtmp_url,
-                *common_output,
-            ]
-
-        elif self.source_type == "youtube":
-            # Ingest through yt-dlp piped into ffmpeg or direct stream URL
-            # yt-dlp -o - <url> | ffmpeg -i pipe:0 ...
-            return [
-                self.ffmpeg_bin,
-                "-re",
-                "-i", self.source_url,
-                *common_output,
-            ]
-
-        else: # tiktok or generic url
-            return [
-                self.ffmpeg_bin,
-                "-re",
-                "-i", self.source_url,
-                *common_output,
-            ]
+        self._notify_status("disconnected", "Live stream capture stopped.")
 
     def _capture_loop(self) -> None:
-        """Background thread executing capture with automatic recovery."""
+        """Background thread executing capture with precise status transitions."""
         retry_delay = 2
+        consecutive_failures = 0
 
         while not self._stop_event.is_set():
+            stream_urls: list[str] = []
+
+            # 1. Resolve source URL
+            if self.source_type == "youtube":
+                ok, stream_urls, err_msg = self._resolve_youtube_stream()
+                if not ok:
+                    self.last_error = err_msg
+                    self._notify_status("failed", err_msg)
+                    if self.on_error:
+                        self.on_error(err_msg)
+                    break
+            elif self.source_type == "tiktok":
+                ok, stream_urls, err_msg = self._resolve_tiktok_stream()
+                if not ok:
+                    self.last_error = err_msg
+                    self._notify_status("failed", err_msg)
+                    if self.on_error:
+                        self.on_error(err_msg)
+                    break
+            elif self.source_type == "obs":
+                self._notify_status("listening", "Listening for OBS Studio RTMP on rtmp://127.0.0.1:1935/live...")
+
+            if self._stop_event.is_set():
+                break
+
+            # 2. Build FFmpeg command and start capture
+            cmd = self._build_ffmpeg_cmd(stream_urls)
+            if self.source_type != "obs":
+                self._notify_status("connecting", "Starting FFmpeg ingestion pipeline...")
+
+            logger.info("Starting live capture subprocess: %s", " ".join(cmd[:6]))
+
             try:
-                # If YouTube, we can resolve the live HLS stream URL using yt-dlp first
-                target_url = self.source_url
-                if self.source_type == "youtube":
-                    if self.on_status_change:
-                        self.on_status_change("connecting", "Resolving live stream feed...")
-                    try:
-                        res = subprocess.run(
-                            [
-                                self.python_bin, "-m", "yt_dlp",
-                                "-g", "--no-warnings", "-f", "best[height<=1080]/best",
-                                self.source_url,
-                            ],
-                            capture_output=True, text=True, timeout=20,
-                            creationflags=_hidden_flags(),
-                        )
-                        if res.returncode == 0 and res.stdout.strip():
-                            target_url = res.stdout.strip().splitlines()[0]
-                            logger.info("Resolved live stream URL: %s...", target_url[:60])
-                    except Exception as e:
-                        logger.warning("Failed resolving live stream with yt-dlp: %s", e)
-
-                out_pattern = str(self.buffer_dir / "chunk_%05d.mp4")
-                if self.source_type == "obs":
-                    listen_url = self.source_url if self.source_url.startswith("rtmp://") else "rtmp://127.0.0.1:1935/live/stream"
-                    cmd = [
-                        self.ffmpeg_bin, "-listen", "1", "-i", listen_url,
-                        "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
-                        "-c:a", "aac", "-b:a", "160k", "-ar", "16000",
-                        "-f", "segment", "-segment_time", str(self.segment_duration),
-                        "-segment_format", "mp4", "-reset_timestamps", "1",
-                        "-movflags", "+faststart+frag_keyframe+empty_moov",
-                        "-y", out_pattern,
-                    ]
-                else:
-                    cmd = [
-                        self.ffmpeg_bin,
-                        "-reconnect", "1", "-reconnect_at_eof", "1",
-                        "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
-                        "-i", target_url,
-                        "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
-                        "-c:a", "aac", "-b:a", "160k", "-ar", "16000",
-                        "-f", "segment", "-segment_time", str(self.segment_duration),
-                        "-segment_format", "mp4", "-reset_timestamps", "1",
-                        "-movflags", "+faststart+frag_keyframe+empty_moov",
-                        "-y", out_pattern,
-                    ]
-
-                logger.info("Starting live capture subprocess: %s", " ".join(cmd[:5]))
-                if self.on_status_change:
-                    self.on_status_change("live", f"Connected to {self.source_type.upper()} Live Stream")
-
                 self.process = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE,
@@ -274,41 +366,88 @@ class StreamConnector:
                     bufsize=1,
                     creationflags=_hidden_flags(),
                 )
+            except Exception as exc:
+                err_msg = f"Failed to start FFmpeg: {exc}"
+                logger.exception(err_msg)
+                self.last_error = err_msg
+                self._notify_status("failed", err_msg)
+                break
 
-                # Monitor output directory for newly created segments
-                known_chunks: set[str] = set()
-                while not self._stop_event.is_set():
-                    poll_res = self.process.poll()
-                    if poll_res is not None:
-                        logger.warning("Capture process exited with code %d", poll_res)
-                        break
+            # Stderr reader thread to prevent pipe deadlocks and capture error logs
+            stderr_lines: list[str] = []
 
-                    # Check for completed chunks (a chunk is complete when the next one appears or size stabilizes)
-                    files = sorted(self.buffer_dir.glob("chunk_*.mp4"))
+            def _drain_stderr() -> None:
+                try:
+                    if self.process and self.process.stderr:
+                        for line in iter(self.process.stderr.readline, ""):
+                            if not line:
+                                break
+                            clean_line = line.strip()
+                            if clean_line:
+                                stderr_lines.append(clean_line)
+                                if len(stderr_lines) > 40:
+                                    stderr_lines.pop(0)
+                except Exception:
+                    pass
+
+            self.stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+            self.stderr_thread.start()
+
+            if self.source_type != "obs":
+                self._notify_status("buffering", "Receiving media packets, initializing rolling buffer...")
+
+            # 3. Monitor output directory for newly created segments
+            known_chunks: set[str] = set()
+            is_live_reported = False
+            preview_img = self.buffer_dir / "preview_current.jpg"
+
+            while not self._stop_event.is_set():
+                poll_res = self.process.poll()
+                if poll_res is not None:
+                    recent_err = " ".join(stderr_lines[-5:]) if stderr_lines else f"Exited with code {poll_res}"
+                    logger.warning("Capture process exited with code %d: %s", poll_res, recent_err)
+                    if not is_live_reported:
+                        self.last_error = f"Ingestion ended prematurely: {recent_err}"
+                        self._notify_status("failed", self.last_error)
+                        return
+                    break
+
+                # Check for completed chunks
+                files = sorted(self.buffer_dir.glob("chunk_*.mp4"))
+                if files:
+                    # Transition to "live" when first chunk exists and has written data
+                    if not is_live_reported:
+                        first_chunk = files[0]
+                        if first_chunk.stat().st_size > 10240:
+                            is_live_reported = True
+                            self.connected_at = time.time()
+                            self._notify_status("live", f"Connected to {self.source_type.upper()} Live Stream")
+                            extract_preview_frame(first_chunk, preview_img, self.ffmpeg_bin)
+
                     if len(files) >= 2:
                         for chunk in files[:-1]: # All except currently writing last chunk
                             if chunk.name not in known_chunks and chunk.stat().st_size > 1024:
                                 known_chunks.add(chunk.name)
                                 self.segments_recorded += 1
                                 elapsed = (time.time() - self.connected_at) if self.connected_at else 0
+                                extract_preview_frame(chunk, preview_img, self.ffmpeg_bin)
                                 if self.on_segment_ready:
                                     try:
                                         self.on_segment_ready(chunk, self.segments_recorded, elapsed)
                                     except Exception as exc:
                                         logger.exception("Error in on_segment_ready: %s", exc)
 
-                    time.sleep(1.0)
-
-            except Exception as e:
-                logger.exception("Capture loop error: %s", e)
-                if self.on_error:
-                    self.on_error(str(e))
+                time.sleep(1.0)
 
             if self._stop_event.is_set():
                 break
 
-            if self.on_status_change:
-                self.on_status_change("reconnecting", f"Stream disconnected. Reconnecting in {retry_delay}s...")
+            consecutive_failures += 1
+            if consecutive_failures >= 3:
+                self._notify_status("failed", f"Stream disconnected: {self.last_error or 'Connection lost'}")
+                break
+
+            self._notify_status("reconnecting", f"Stream disconnected. Reconnecting in {retry_delay}s...")
             time.sleep(retry_delay)
             retry_delay = min(15, retry_delay * 1.5)
 

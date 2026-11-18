@@ -111,7 +111,163 @@ class TestLiveStudio(unittest.TestCase):
         self.assertFalse(status["session_active"])
         self.assertEqual(status["status"], "idle")
         self.assertIn("buffer_duration_seconds", status)
+        self.assertIn("editing_prefs", status)
+        self.assertTrue(status["editing_prefs"]["auto_edit"])
+
+    def test_caption_styler_presets(self):
+        from live.caption_styler import CaptionStyler, PRESETS
+        styler = CaptionStyler()
+        transcripts = [
+            {"start": 0.0, "end": 2.0, "text": "Unbelievable victory and clutch play!"},
+            {"start": 2.5, "end": 4.5, "text": "Subscribe for more live content."},
+        ]
+
+        # Test each preset generates valid ASS file
+        for preset_name in PRESETS.keys():
+            ass_path = self.root / f"sub_{preset_name}.ass"
+            res = styler.build_ass(
+                transcripts=transcripts,
+                clip_start=0.0,
+                clip_duration=5.0,
+                output_ass_path=str(ass_path),
+                style_preset=preset_name,
+                layout_mode="gaming_split" if preset_name == "gaming" else "talking_head",
+            )
+            self.assertIsNotNone(res)
+            self.assertTrue(ass_path.exists())
+            content = ass_path.read_text(encoding="utf-8-sig")
+            self.assertIn("[Script Info]", content)
+            self.assertIn("PlayResX: 1080", content)
+            self.assertIn("PlayResY: 1920", content)
+            self.assertIn("Dialogue:", content)
+
+    def test_face_tracker_smoothing(self):
+        from live.face_tracker import FaceTracker
+        tracker = FaceTracker(target_aspect_w=9, target_aspect_h=16, smoothing_alpha=0.3, deadzone_ratio=0.05)
+        # Verify initial target center
+        self.assertEqual(tracker.smoothed_center, 0.5)
+
+        # Apply slight shift inside deadzone (<5%): smoothed center remains unchanged
+        smoothed_1 = tracker.update_smoothed_center(0.52)
+        self.assertEqual(smoothed_1, 0.5)
+
+        # Apply significant shift outside deadzone (>5%): center smoothly shifts via EMA
+        smoothed_2 = tracker.update_smoothed_center(0.70)
+        self.assertGreater(smoothed_2, 0.5)
+        self.assertLess(smoothed_2, 0.7)
+
+    def test_studio_manager_editing_prefs(self):
+        mgr = LiveStudioManager(
+            data_dir=self.root,
+            ffmpeg_bin="ffmpeg",
+            python_bin="python",
+        )
+        updated = mgr.update_editing_prefs({
+            "auto_edit": False,
+            "caption_style": "creator",
+        })
+        self.assertFalse(updated["auto_edit"])
+        self.assertEqual(updated["caption_style"], "creator")
+        # Unspecified prefs retain defaults
+        self.assertTrue(updated["face_tracking"])
+
+    def test_batch_clip_inactive_session(self):
+        mgr = LiveStudioManager(
+            data_dir=self.root,
+            ffmpeg_bin="ffmpeg",
+            python_bin="python",
+        )
+        # Calling batch_clip on inactive session returns empty list safely
+        clips = mgr.batch_clip(count=4, duration_sec=30)
+        self.assertEqual(clips, [])
+
+    def test_caption_styling_none_and_custom_text(self):
+        from live.caption_styler import CaptionStyler
+        styler = CaptionStyler()
+        out_ass = self.root / "test_none.ass"
+        # When style_preset="none" and no custom text, returns None
+        res = styler.build_ass(
+            transcripts=[{"text": "Hello world", "start": 0.0, "end": 2.0}],
+            clip_start=0.0,
+            clip_duration=10.0,
+            output_ass_path=str(out_ass),
+            style_preset="none",
+        )
+        self.assertIsNone(res)
+
+        # When style_preset="none" BUT custom text is provided, generates ASS with watermark
+        res_custom = styler.build_ass(
+            transcripts=[{"text": "Hello world", "start": 0.0, "end": 2.0}],
+            clip_start=0.0,
+            clip_duration=10.0,
+            output_ass_path=str(out_ass),
+            style_preset="none",
+            custom_text="LIVE · @MYCHANNEL",
+            custom_text_pos="top-center",
+            custom_text_color="#FF0000",
+        )
+        self.assertIsNotNone(res_custom)
+        content = Path(res_custom).read_text(encoding="utf-8")
+        self.assertIn("LIVE · @MYCHANNEL", content)
+        self.assertIn("Style: CustomText", content)
+
+    def test_caption_styling_custom_font(self):
+        from live.caption_styler import CaptionStyler
+        styler = CaptionStyler()
+        out_ass = self.root / "test_font.ass"
+        res = styler.build_ass(
+            transcripts=[{"text": "Test captions", "start": 0.0, "end": 2.0}],
+            clip_start=0.0,
+            clip_duration=5.0,
+            output_ass_path=str(out_ass),
+            style_preset="highlight",
+            custom_font="Impact",
+        )
+        self.assertIsNotNone(res)
+        content = Path(res).read_text(encoding="utf-8")
+        self.assertIn("Impact", content)
+
+    def test_smart_editor_background_styles(self):
+        from live.smart_editor import SmartEditor
+        from live.content_analyzer import ContentProfile
+        editor = SmartEditor(ffmpeg_bin="ffmpeg")
+        dummy_profile = ContentProfile(mode="general", layout="blurred_frame", confidence=0.5, facecam_box=None, primary_face_x=0.5, secondary_face_x=None, faces_detected=0)
+
+        # Test black canvas
+        fc_black = editor._build_filter_complex(
+            raw_video_path=Path("dummy.mp4"),
+            layout="blurred_frame",
+            profile=dummy_profile,
+            ass_path=None,
+            energy_zoom=False,
+            background_style="solid_black",
+        )
+        self.assertIn("color=c=black:s=1080x1920:r=30[bg]", fc_black)
+
+        # Test custom color
+        fc_custom = editor._build_filter_complex(
+            raw_video_path=Path("dummy.mp4"),
+            layout="blurred_frame",
+            profile=dummy_profile,
+            ass_path=None,
+            energy_zoom=False,
+            background_style="custom_color",
+            background_color="#1e293b",
+        )
+        self.assertIn("color=c='#1e293b':s=1080x1920:r=30[bg]", fc_custom)
+
+        # Test heavy blur
+        fc_heavy = editor._build_filter_complex(
+            raw_video_path=Path("dummy.mp4"),
+            layout="blurred_frame",
+            profile=dummy_profile,
+            ass_path=None,
+            energy_zoom=False,
+            background_style="heavy_blur",
+        )
+        self.assertIn("boxblur=45:5[bg]", fc_heavy)
 
 
 if __name__ == "__main__":
     unittest.main()
+

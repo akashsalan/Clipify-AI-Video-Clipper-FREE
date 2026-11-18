@@ -7,30 +7,44 @@ import urllib.request
 import urllib.error
 
 REPO = "sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE"
-TAG = "v3.1.0"
-RELEASE_NAME = "Clipify AI v3.1.0"
+TAG = "v3.2.1"
+RELEASE_NAME = "Clipify AI v3.2.1"
 ASSET_NAME = "Clipify.AI.Setup.exe"
 FILE_PATH = r"L:\ClipifyAI\build\installer_app\out\Clipify.AI.Setup.exe"
 
-RELEASE_NOTES = """## Clipify AI v3.1.0 Release Notes
+RELEASE_NOTES = """## Clipify AI v3.2.1 Release Notes
 
-### 🚀 What's New & Fixed in v3.1.0
-1. **🛡️ Corrupt Model Cache Auto-Purge & Self-Healing**:
-   - Fixed `RuntimeError: Cannot load the vocabulary from the model directory` caused by interrupted model downloads.
-   - Rigorously validates model weights, config, and vocabulary files before flagging as cached.
-   - Automatically detects and purges broken Hugging Face cache directories on disk and self-heals via fresh download or mirror fallback without requiring manual reinstallation.
+### 🚀 What's New in v3.2.1
 
-2. **⚡ Built-in Heuristic AI (No Ollama Needed)**:
-   - Fixed the issue where users without Ollama installed could not click or press the "Generate Shorts" button.
-   - Added native **Built-in Heuristic AI** mode for instant clipping using audio density and candidate heuristics with zero Ollama setup required.
-   - Fixed the HTTP 503 error when starting jobs without Ollama models.
+1. **🔴 Live Studio [BETA] — Real-Time Stream Clipping Engine**:
+   - Turn live broadcast moments into professionally edited vertical Shorts automatically.
+   - **YouTube Live & OBS Studio RTMP Support**: Direct stream ingestion from any public YouTube Live URL or OBS Studio (`rtmp://127.0.0.1:1935/live`).
+   - **Watch Like The Stream**: Integrated live player with direct audio and video playback, plus diagnostic snapshot frame feed.
+   - **Rolling Media Buffer**: Maintain 5–20 minutes of rolling buffer with zero latency.
+   - **Instant & Batch Clipping**: Dedicated `⚡ Clip Highlight` (15s, 30s, 60s) and `🎬 Generate 4 Clips` batch button to extract and render multiple high-energy Shorts simultaneously.
 
-3. **⏱️ CPU Whisper Acceleration & Live Heartbeat Telemetry**:
-   - Intelligently defaults to the `base` Whisper model on CPU systems (`CUDA=False`), speeding up transcription **5x–8x** (reducing 34-minute video processing from 14 minutes down to ~2–3 minutes!).
-   - Fixed the UI appearing frozen at `10%` during long transcriptions: added background stdout heartbeats every 5 seconds and dynamic SSE progress scaling from 10% to 28% with live elapsed time.
+2. **🧠 Smart AI Shorts Video Editing**:
+   - **Face Tracking & Stabilization**: Centroid speaker tracking with deadzone tolerance and exponential moving average (EMA) jitter smoothing.
+   - **Gaming Split-Screen**: Automated layout combining 58% top gameplay with 42% bottom webcam/reaction.
+   - **Dynamic Energy Zooms**: Automatic punch-in zooms on high-excitement conversational moments.
+
+3. **🎨 Visual Customization, Fonts & Branding**:
+   - **Custom Canvas Backgrounds**: Soft Ambient Blur, Heavy Cinematic Blur, Solid Black Canvas, or Custom Brand Color with hex/color picker.
+   - **Custom Text & Watermarks**: Add persistent channel handle or tag (`LIVE · @CHANNEL`) with custom alignment (`Top Center`, `Top Left`, `Bottom Center`, etc.) and color.
+   - **Font Library**: Choose from Montserrat Extra Bold, Arial Black, Impact, Segoe UI Black, Arial, Segoe UI, Trebuchet MS, Verdana, Calibri, Georgia.
+   - **Disable Captions**: Option to disable burned-in subtitles completely while preserving watermarks and smart reframing.
+
+4. **🛡️ Defender-Clean Native Launcher & SmartScreen Guide**:
+   - Clean native C# wrappers (`WorkerLauncher.cs`, `Launcher.cs`) compiled with Microsoft `.NET Framework csc.exe`, eliminating heuristic false positives.
+   - 100% free and open-source with zero malware or telemetry.
+   - *Note on Windows SmartScreen*: Since this is a new open-source binary without an enterprise EV certificate, Windows Defender SmartScreen may show *"Windows protected your PC"*. Simply click **More info** → **Run anyway**.
+
+5. **✨ Quality Assurance & Regressions**:
+   - All 116 comprehensive QA unit tests passing.
+   - Fully preserved Create, Narrate, Ollama, WhisperX, FFmpeg, and Python 3.11 runtime pipelines.
 
 ### 📦 Download & Install
-Download **`Clipify.AI.Setup.exe`** below to install Clipify AI v3.1.0.
+Download **`Clipify.AI.Setup.exe`** below to install Clipify AI v3.2.1.
 """
 
 def get_token():

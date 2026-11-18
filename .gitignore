@@ -91,6 +91,7 @@ build/qa_*/
 build/rename-*
 build/worker_recovery_*
 build/installer-preserved/
+live_studio/
 HKCU/
 Microsoft/
 spaces/

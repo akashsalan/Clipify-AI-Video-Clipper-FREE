@@ -221,3 +221,4 @@ class RollingBuffer:
                 except Exception:
                     pass
             self.chunks.clear()
+

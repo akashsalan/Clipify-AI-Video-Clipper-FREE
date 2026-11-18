@@ -181,3 +181,4 @@ except Exception as e:
                     logger.debug("Failed parsing whisper output: %s", ex)
 
         return segments
+

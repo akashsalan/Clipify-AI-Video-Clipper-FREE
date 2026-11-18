@@ -50,18 +50,37 @@ class HighlightCandidate:
     transcript_snippet: str
 
 
+def resolve_ollama_model(base_url: str = "http://localhost:11434", requested: str = "") -> str:
+    """Resolve an available Ollama model prioritizing lightweight Qwen models."""
+    if requested and requested not in ("heuristic", "default"):
+        return requested
+    try:
+        req = urllib.request.Request(f"{base_url.rstrip('/')}/api/tags")
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            data = json.loads(resp.read().decode())
+            installed = [m.get("name", "") for m in data.get("models", [])]
+            for pref in ("qwen3:4b", "qwen3:8b", "qwen2.5:3b", "qwen2.5:latest", "qwen:latest"):
+                if any(m.startswith(pref) for m in installed):
+                    return pref
+            if installed:
+                return installed[0]
+    except Exception:
+        pass
+    return "qwen3:4b"
+
+
 class HighlightDetector:
     """Detects highlights in live transcript windows."""
 
     def __init__(
         self,
         ollama_url: str = "http://localhost:11434",
-        model_name: str = "qwen2.5:3b",
+        model_name: str = "",
         sensitivity: int = 5, # 1 (least sensitive) to 10 (most sensitive)
         min_clip_gap: float = 30.0,
     ):
         self.ollama_url = ollama_url.rstrip("/")
-        self.model_name = model_name
+        self.model_name = resolve_ollama_model(self.ollama_url, model_name)
         self.sensitivity = max(1, min(10, sensitivity))
         self.min_clip_gap = min_clip_gap
         self.last_triggered_time = -999.0
@@ -122,23 +141,22 @@ Respond strictly in valid JSON with these exact keys:
 }}
 JSON ONLY:"""
 
-        payload = {
+        payload_chat = {
             "model": self.model_name,
-            "prompt": prompt,
+            "messages": [{"role": "user", "content": prompt}],
             "stream": False,
-            "options": {"temperature": 0.3, "num_predict": 150},
+            "options": {"temperature": 0.2, "num_predict": 150},
         }
 
         try:
             req = urllib.request.Request(
-                f"{self.ollama_url}/api/generate",
-                data=json.dumps(payload).encode("utf-8"),
+                f"{self.ollama_url}/api/chat",
+                data=json.dumps(payload_chat).encode("utf-8"),
                 headers={"Content-Type": "application/json"},
             )
-            with urllib.request.urlopen(req, timeout=8) as resp:
+            with urllib.request.urlopen(req, timeout=12) as resp:
                 data = json.loads(resp.read().decode())
-                response_text = data.get("response", "").strip()
-                # Parse JSON block
+                response_text = data.get("message", {}).get("content", "").strip()
                 m = re.search(r"\{.*\}", response_text, re.DOTALL)
                 if m:
                     res_json = json.loads(m.group(0))
@@ -151,8 +169,8 @@ JSON ONLY:"""
                         reason = str(res_json.get("reason", "")).strip()
 
                         return HighlightCandidate(
-                            start_sec=max(0.0, start_sec - 2.0), # Add 2s pre-roll
-                            end_sec=end_sec + 2.0,                # Add 2s post-roll
+                            start_sec=max(0.0, start_sec - 2.0),
+                            end_sec=end_sec + 2.0,
                             category=category,
                             title=title,
                             score=score,
@@ -160,7 +178,7 @@ JSON ONLY:"""
                             transcript_snippet=full_text,
                         )
         except Exception as e:
-            logger.debug("Ollama live evaluation skipped/offline: %s", e)
+            logger.debug("Ollama live evaluation via chat failed: %s", e)
 
         return None
 
@@ -208,3 +226,4 @@ JSON ONLY:"""
             )
 
         return None
+

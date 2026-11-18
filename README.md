@@ -2,22 +2,23 @@
 
 # 🎬 Clipify AI: Free & Open-Source AI Video Clipper & Shorts Studio
 
-### Turn long videos into viral, vertical 9:16 Shorts with AI highlights, animated captions & faceless narration.
+### Turn long videos & livestreams into viral, vertical 9:16 Shorts with AI highlights, animated captions & faceless narration.
 
 **100% Free · Private & Local · No Cloud Subscriptions · No Watermarks**
 
 <p align="center">
-  <a href="https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/tag/v3.1.0"><strong>Download v3.1.0 Installer (Windows x64) »</strong></a>
+  <a href="https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/tag/v3.2.1"><strong>Download v3.2.1 Installer (Windows x64) »</strong></a>
   <br>
   <a href="https://ai.projectclipzy.workers.dev/">Project Website</a> ·
   <a href="#-key-features">Key Features</a> ·
+  <a href="#-live-studio-beta">Live Studio</a> ·
   <a href="#-quick-start">Quick Start</a> ·
   <a href="#-clipper-vs-competitors">Comparison</a> ·
   <a href="#-local-ai-engine">Local AI Setup</a>
 </p>
 
-[![Release](https://img.shields.io/badge/release-v3.1.0-438d72?style=for-the-badge&logo=github)](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/tag/v3.1.0)
-[![Platform](https://img.shields.io/badge/platform-Windows%20x64-243b63?style=for-the-badge&logo=windows)](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/tag/v3.1.0)
+[![Release](https://img.shields.io/badge/release-v3.2.1-438d72?style=for-the-badge&logo=github)](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/tag/v3.2.1)
+[![Platform](https://img.shields.io/badge/platform-Windows%20x64-243b63?style=for-the-badge&logo=windows)](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/tag/v3.2.1)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-6366f1?style=for-the-badge)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-3776ab?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![Ollama](https://img.shields.io/badge/AI%20Engine-Ollama%20%2F%20Qwen-000000?style=for-the-badge&logo=ollama&logoColor=white)](https://ollama.ai)
@@ -28,68 +29,72 @@
 
 ## ⚡ What is Clipify AI?
 
-**Clipify AI** is an open-source, full-stack desktop alternative to expensive cloud platforms like OpusClip, Munch, and Submagic. It brings state-of-the-art AI video clipping, face-tracking vertical crop, Hormozi-style animated word subtitles, and an AI narration generation studio directly onto your local machine.
+**Clipify AI** is an open-source, full-stack desktop alternative to expensive cloud platforms like OpusClip, Munch, and Submagic. It brings state-of-the-art AI video clipping, real-time livestream monitoring, face-tracking vertical crop, Hormozi-style animated word subtitles, and an AI narration generation studio directly onto your local machine.
 
 Everything runs on your computer—preserving **100% privacy**, with **zero monthly subscription fees**, **zero API costs**, and **no video length quotas**.
 
 ---
 
-## 📥 Download Windows Installer (v3.1.0)
+## 📥 Download Windows Installer (v3.2.1)
 
 > [!IMPORTANT]
-> The verified release installer is **Clipify AI v3.1.0 for Windows 10/11 (64-bit)**.
+> The verified release installer is **Clipify AI v3.2.1 for Windows 10/11 (64-bit)**.
+>
+> **Note on Windows SmartScreen**: Clipify AI is 100% open-source, free, and contains zero malware or telemetry. Because new open-source binaries lack corporate EV certificates, Windows Defender SmartScreen may display *"Windows protected your PC"*. Simply click **"More info"** → **"Run anyway"** to launch.
 
 | Package | Version | Size | Checksum (SHA-256) | Download |
 | :--- | :---: | :---: | :--- | :--- |
-| **`Clipify.AI.Setup.exe`** | `v3.1.0` | **319.25 MB** | `C3BB3FBAD98A01E1D20AB79D6B98C31461F0DF23985AEEBA6EC99155BF4A6DC9` | [**Download from GitHub**](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.1.0/Clipify.AI.Setup.exe) |
+| **`Clipify.AI.Setup.exe`** | `v3.2.1` | **319.4 MB** | `77B313493410639B7E4A03730453A74EB8E85678D7D3E10F16C750B57F3ECC28` | [**Download from GitHub**](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.2.1/Clipify.AI.Setup.exe) |
 
 #### Verify installer integrity in PowerShell:
 ```powershell
 Get-FileHash ".\Clipify.AI.Setup.exe" -Algorithm SHA256
-# Compare output with: C3BB3FBAD98A01E1D20AB79D6B98C31461F0DF23985AEEBA6EC99155BF4A6DC9
+# Compare output with: 77B313493410639B7E4A03730453A74EB8E85678D7D3E10F16C750B57F3ECC28
 ```
-
 
 ---
 
 ## 🌟 Key Features
 
-### 1. 🎯 AI Video Clipping & Viral Highlight Scoring
+### 1. 🔴 Live Studio [BETA] (Real-Time Livestream AI Clipper)
+- **Live Ingestion**: Connect directly to any **YouTube Live** stream or local **OBS Studio** via RTMP (`rtmp://127.0.0.1:1935/live`).
+- **Watch Like The Stream**: Integrated live stream player with real audio and video playback, plus a snapshot diagnostic view.
+- **Instant & Batch Clipping**: Dedicated `⚡ Clip Highlight` (15s, 30s, 60s) and `🎬 Generate 4 Clips` batch partitioning to extract viral moments on the fly.
+- **Smart AI Reframing & Gaming Layout**: Intelligently detects gameplay and facecam to render 58% gameplay / 42% reaction split-screens.
+- **Full Customization**: Choose custom fonts (*Montserrat, Arial Black, Impact, Segoe UI, etc.*), custom canvas backgrounds (*Soft Blur, Cinematic Blur, Solid Black, Brand Color*), custom watermark text branding, or disable captions completely.
+
+### 2. 🎯 AI Video Clipping & Viral Highlight Scoring
 - **Automated Ingestion**: Paste a YouTube link or drag-and-drop MP4/MOV/MKV/WEBM footage.
 - **Word-Level Transcription**: Fast, accurate speech-to-text powered by WhisperX.
-- **LLM Virality Scoring**: Uses local Ollama models (`qwen2.5:3b`, `qwen2.5:8b`, etc.) to rank conversation hooks, humor, drama, or actionable advice.
+- **LLM Virality Scoring**: Uses local Ollama models (`qwen2.5:3b`, `qwen2.5:8b`, etc.) or built-in fast AI to rank conversation hooks, humor, drama, or actionable advice.
 - **Automatic Titles & Descriptions**: Generates high-CTR titles, hashtags, and social descriptions ready for YouTube Shorts, Instagram Reels, and TikTok.
 
-### 2. 📐 Smart 9:16 Face-Tracking & 2-Panel Split-Screen
-- **Active Speaker Tracking**: Computer-vision face detection smoothly centers subjects in a vertical 9:16 frame.
+### 3. 📐 Smart 9:16 Face-Tracking & 2-Panel Split-Screen
+- **Active Speaker Tracking**: Computer-vision face detection smoothly centers subjects in a vertical 9:16 frame with EMA jitter smoothing.
 - **2-Panel Split Screen**: Seamlessly combine two speakers or pair commentary/reaction footage on top with engaging gameplay below.
 
-### 3. 🎨 Dynamic Animated Captions (Hormozi / Viral Style)
+### 4. 🎨 Dynamic Animated Captions (Hormozi / Viral Style)
 - **Active Word Highlighting**: Karaoke-style word highlighting with customizable accent colors (Neon Yellow, Coral, Cyan, Green).
 - **Creator Font Library**: Includes Montserrat Extra Bold, The Bold Font, Komika Axis, Anton, and more.
 - **Customizable Layout**: Adjust caption placement, font size, stroke thickness, and drop shadow.
 
-### 4. 🎛️ Built-in 9:16 Vertical Video Editor
+### 5. 🎛️ Built-in 9:16 Vertical Video Editor
 - **Real-Time 9:16 Preview**: True vertical player with zero letterboxing or distortion.
 - **Post-Render Watermarking & Branding**: Overlay custom logos, adjust opacity and scale, or strip transparent backgrounds automatically with built-in chroma-keying.
 - **One-Click Share & Export**: Instant download or export directly from your local project library.
 
-### 5. 🎙️ Narrate Studio (Faceless Shorts Generator)
+### 6. 🎙️ Narrate Studio (Faceless Shorts Generator)
 - **AI Story & Script Generation**: Turn any idea into a viral script using local LLMs with custom storytelling prompts.
-- **Dual Voice Engines**:
-  - **Kokoro Neural TTS**: High-fidelity, natural neural speech.
-  - **Windows SAPI TTS**: Instant fallback speech.
-  - **Sub-2ms Preview Caching**: Pre-warmed audio cache delivers instant voice samples without re-rendering delays.
+- **Dual Voice Engines**: Kokoro Neural TTS and Windows SAPI TTS with sub-2ms audio preview caching.
 - **Curated Background Footage**: Pick from clean stock backgrounds and render a complete faceless short in seconds.
-
-### 6. 🎮 Interactive Game Installer with Live Telemetry
-- **Setup Mini-Game**: Built-in runner game with 6 dynamic seasonal transitions (Spring foliage, Autumn reds, Winter snow, Bare branches) synchronized to install progress.
-- **Live Console Output**: Real-time installation terminal showing live pip output, runtime unpacking, and model transfers.
-- **Ollama Engine Autodetection**: Automatically detects existing Ollama models on your machine or downloads optimized Qwen models during setup.
 
 ---
 
 ## 📸 Screenshots
+
+| 🔴 Live Studio Monitor & Real-Time Player | ⚡ Export-Ready Live Shorts & Batch Clips |
+| :---: | :---: |
+| ![Live Studio Monitor](docs/screenshots/live_studio.jpg) | ![Export Ready Live Clips](docs/screenshots/live_studio_clips.jpg) |
 
 | 🎬 Short Studio Dashboard | 🎙️ Narrate Studio (Faceless Shorts) |
 | :---: | :---: |

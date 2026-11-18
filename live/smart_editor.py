@@ -1,0 +1,360 @@
+"""Smart AI Editor for Live Studio Shorts.
+
+Orchestrates intelligent editing decisions:
+- Automatic content classification (gaming facecam, talking head, podcast, reaction)
+- Face tracking and stabilized 9:16 crop box
+- Dynamic gaming split-screen layout (gameplay top, facecam bottom)
+- Word-level animated ASS subtitles with 5 styling presets
+- Subtle energy-based zoom / punch-in
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import re
+import subprocess
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+from live.caption_styler import CaptionStyler, ffmpeg_ass_filter
+from live.content_analyzer import ContentAnalyzer, ContentProfile
+from live.face_tracker import FaceTracker
+
+logger = logging.getLogger("clipify.live.smart_editor")
+
+
+def _hidden_flags() -> int:
+    return getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+
+
+@dataclass
+class EditDecision:
+    layout: str  # "gaming_split", "talking_head", "podcast_split", "blurred_frame"
+    content_type: str
+    face_tracked: bool = False
+    facecam_detected: bool = False
+    captions_applied: bool = False
+    caption_style: str = "highlight"
+    energy_zoom: bool = False
+    badges: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+class SmartEditor:
+    """Intelligent Shorts video editing engine."""
+
+    def __init__(self, ffmpeg_bin: str):
+        self.ffmpeg_bin = ffmpeg_bin
+        self.analyzer = ContentAnalyzer(ffmpeg_bin)
+        self.caption_styler = CaptionStyler()
+
+    def edit(
+        self,
+        raw_video_path: Path,
+        output_vertical: Path,
+        transcripts: List[Dict[str, Any]],
+        clip_start: float,
+        clip_duration: float,
+        editing_prefs: Optional[Dict[str, Any]] = None,
+        energy_score: float = 7.0,
+    ) -> EditDecision:
+        """Process raw clip into an intelligently edited vertical Short."""
+        prefs = editing_prefs or {}
+        auto_edit_enabled = bool(prefs.get("auto_edit", True))
+        face_track_enabled = bool(prefs.get("face_tracking", True))
+        gaming_layout_enabled = bool(prefs.get("gaming_layout", True))
+        auto_captions_enabled = bool(prefs.get("auto_captions", True))
+        caption_style = str(prefs.get("caption_style", "highlight"))
+        caption_font = str(prefs.get("caption_font", "Montserrat Extra Bold"))
+        background_style = str(prefs.get("background_style", "soft_blur"))
+        background_color = str(prefs.get("background_color", "#000000"))
+        custom_text = str(prefs.get("custom_text", "")).strip()
+        custom_text_pos = str(prefs.get("custom_text_pos", "top-center"))
+        custom_text_color = str(prefs.get("custom_text_color", "#FFFFFF"))
+
+        # 1. Content Analysis
+        transcript_snippet = " ".join(t.get("text", "") for t in transcripts)
+        profile = self.analyzer.analyze(raw_video_path, transcript_text=transcript_snippet, sample_count=6)
+        logger.info(
+            "Content profile for %s: mode=%s, facecam=%s, faces=%d",
+            raw_video_path.name, profile.mode, bool(profile.facecam_box), profile.faces_detected,
+        )
+
+        # 2. Layout Decision
+        layout = "blurred_frame"
+        face_tracked = False
+        facecam_detected = False
+        badges: List[str] = []
+
+        if auto_edit_enabled and gaming_layout_enabled and profile.mode == "gaming_facecam" and profile.facecam_box:
+            layout = "gaming_split"
+            facecam_detected = True
+            badges.append("🎮 Gaming Split")
+        elif auto_edit_enabled and face_track_enabled and profile.mode == "talking_head":
+            layout = "talking_head"
+            face_tracked = True
+            badges.append("👤 Face Tracked")
+        elif auto_edit_enabled and profile.mode == "podcast" and profile.faces_detected >= 2:
+            layout = "podcast_split"
+            badges.append("🎙️ Podcast Split")
+        else:
+            layout = "blurred_frame"
+            badges.append("✨ Smart Fit")
+
+        # Background badge if customized
+        if background_style == "solid_black":
+            badges.append("⬛ Black BG")
+        elif background_style == "custom_color":
+            badges.append("🎨 Custom BG")
+        elif background_style == "heavy_blur":
+            badges.append("🎬 Cinematic Blur")
+
+        # 3. Energy Zoom Check
+        energy_zoom = auto_edit_enabled and (energy_score >= 8.5)
+        if energy_zoom:
+            badges.append("⚡ Dynamic Zoom")
+
+        # 4. Generate Subtitles ASS & Custom Text Overlay
+        ass_path: Optional[str] = None
+        captions_applied = False
+        should_render_captions = auto_captions_enabled and (caption_style.lower() != "none")
+        has_custom_text = bool(custom_text)
+
+        if should_render_captions or has_custom_text:
+            temp_ass = output_vertical.parent / "subtitles.ass"
+            try:
+                ass_path = self.caption_styler.build_ass(
+                    transcripts=transcripts if should_render_captions else [],
+                    clip_start=clip_start,
+                    clip_duration=clip_duration,
+                    output_ass_path=str(temp_ass),
+                    style_preset="none" if not should_render_captions else caption_style,
+                    layout_mode=layout,
+                    custom_font=caption_font,
+                    custom_text=custom_text if has_custom_text else None,
+                    custom_text_pos=custom_text_pos,
+                    custom_text_color=custom_text_color,
+                )
+                if ass_path and os.path.exists(ass_path):
+                    if should_render_captions and transcripts:
+                        captions_applied = True
+                        badges.append("💬 Auto Captions")
+                    if has_custom_text:
+                        badges.append("🏷️ Custom Text")
+            except Exception as e:
+                logger.warning("Caption/Watermark generation failed: %s", e)
+                ass_path = None
+
+        # 5. Build FFmpeg Filter Complex
+        filter_str = self._build_filter_complex(
+            raw_video_path=raw_video_path,
+            layout=layout,
+            profile=profile,
+            ass_path=ass_path,
+            energy_zoom=energy_zoom,
+            background_style=background_style,
+            background_color=background_color,
+        )
+
+        # 6. Execute FFmpeg Rendering
+        cmd = [
+            self.ffmpeg_bin, "-y",
+            "-i", str(raw_video_path),
+            "-filter_complex", filter_str,
+            "-map", "[vout]", "-map", "0:a?",
+            "-c:v", "libx264", "-preset", "fast", "-crf", "21",
+            "-c:a", "aac", "-b:a", "160k",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            str(output_vertical),
+        ]
+
+        logger.info("Executing smart render (layout=%s, captions=%s, bg=%s)...", layout, captions_applied, background_style)
+        res = subprocess.run(
+            cmd, capture_output=True, text=True,
+            timeout=120, creationflags=_hidden_flags(),
+        )
+
+        if res.returncode != 0 or not output_vertical.exists() or output_vertical.stat().st_size < 1000:
+            logger.error("FFmpeg smart render failed (code %d): %s", res.returncode, res.stderr[-500:])
+            # Fallback to standard safe blur
+            self._render_safe_fallback(
+                raw_video_path, output_vertical, ass_path,
+                background_style=background_style, background_color=background_color,
+            )
+
+        # Clean temporary ASS file
+        if ass_path and os.path.exists(ass_path):
+            try:
+                os.remove(ass_path)
+            except Exception:
+                pass
+
+        return EditDecision(
+            layout=layout,
+            content_type=profile.mode,
+            face_tracked=face_tracked,
+            facecam_detected=facecam_detected,
+            captions_applied=captions_applied,
+            caption_style=caption_style,
+            energy_zoom=energy_zoom,
+            badges=badges,
+            metadata={
+                "energy_score": energy_score,
+                "profile_confidence": profile.confidence,
+                "faces_detected": profile.faces_detected,
+                "background_style": background_style,
+                "custom_font": caption_font,
+                "has_custom_text": has_custom_text,
+            },
+        )
+
+    def _build_filter_complex(
+        self,
+        raw_video_path: Path,
+        layout: str,
+        profile: ContentProfile,
+        ass_path: Optional[str],
+        energy_zoom: bool,
+        background_style: str = "soft_blur",
+        background_color: str = "#000000",
+    ) -> str:
+        """Assemble the FFmpeg filter graph string."""
+        ass_filter = f",{ffmpeg_ass_filter(ass_path)}" if ass_path else ""
+
+        # Build canvas background stream
+        clean_bg_color = background_color.strip()
+        if not clean_bg_color.startswith("#"):
+            clean_bg_color = "#" + clean_bg_color
+        if not re.match(r"^#[0-9a-fA-F]{6}$", clean_bg_color):
+            clean_bg_color = "#000000"
+
+        if background_style == "solid_black":
+            bg_stream = "color=c=black:s=1080x1920:r=30[bg]"
+        elif background_style == "custom_color":
+            bg_stream = f"color=c='{clean_bg_color}':s=1080x1920:r=30[bg]"
+        elif background_style == "heavy_blur":
+            bg_stream = "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=45:5[bg]"
+        else:  # soft_blur
+            bg_stream = "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:3[bg]"
+
+        if layout == "gaming_split" and profile.facecam_box:
+            box = profile.facecam_box
+            if isinstance(box, dict):
+                cx, cy, cw, ch = float(box["x"]), float(box["y"]), float(box["w"]), float(box["h"])
+            else:
+                cx, cy, cw, ch = [float(v) for v in box]
+
+            cam_crop = (
+                f"crop=w='trunc(iw*{cw:.4f}/2)*2':h='trunc(ih*{ch:.4f}/2)*2':"
+                f"x='trunc(iw*{cx:.4f}/2)*2':y='trunc(ih*{cy:.4f}/2)*2'"
+            )
+            zoom_expr = ",crop=w='trunc(iw/1.05/2)*2':h='trunc(ih/1.05/2)*2',scale=1080:1080" if energy_zoom else ""
+
+            filters = (
+                f"{bg_stream};"
+                f"[0:v]scale=1080:1080:force_original_aspect_ratio=decrease,pad=1080:1080:(ow-iw)/2:(oh-ih)/2{zoom_expr}[gameplay];"
+                f"[0:v]{cam_crop},scale=1080:760:force_original_aspect_ratio=decrease,pad=1080:760:(ow-iw)/2:(oh-ih)/2[facecam];"
+                "[bg][gameplay]overlay=0:24[tmp1];"
+                f"[tmp1][facecam]overlay=0:1136[vcomp];"
+                f"[vcomp]null{ass_filter}[vout]"
+            )
+            return filters
+
+        elif layout == "talking_head":
+            tracker = FaceTracker()
+            crop_box = tracker.compute_static_crop(raw_video_path, face_cx=profile.primary_face_x)
+            nx, ny, nw, nh = crop_box
+            zoom_expr = ",crop=w='trunc(iw/1.05/2)*2':h='trunc(ih/1.05/2)*2',scale=1080:1920" if energy_zoom else ""
+
+            crop_expr = (
+                f"crop=w='trunc(iw*{nw:.4f}/2)*2':h='trunc(ih*{nh:.4f}/2)*2':"
+                f"x='trunc(iw*{nx:.4f}/2)*2':y='trunc(ih*{ny:.4f}/2)*2'"
+            )
+            filters = (
+                f"[0:v]{crop_expr},"
+                f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920{zoom_expr}[vcomp];"
+                f"[vcomp]null{ass_filter}[vout]"
+            )
+            return filters
+
+        elif layout == "podcast_split" and profile.faces_detected >= 2:
+            cx1 = max(0.0, min(1.0 - 0.45, profile.primary_face_x - 0.225))
+            cx2 = max(0.0, min(1.0 - 0.45, (profile.secondary_face_x or 0.72) - 0.225))
+
+            filters = (
+                f"{bg_stream};"
+                f"[0:v]crop=w='trunc(iw*0.45/2)*2':h=ih:x='trunc(iw*{cx1:.4f}/2)*2':y=0,scale=1080:920:force_original_aspect_ratio=increase,crop=1080:920[p1];"
+                f"[0:v]crop=w='trunc(iw*0.45/2)*2':h=ih:x='trunc(iw*{cx2:.4f}/2)*2':y=0,scale=1080:920:force_original_aspect_ratio=increase,crop=1080:920[p2];"
+                "[bg][p1]overlay=0:20[tmp1];"
+                "[tmp1][p2]overlay=0:980[vcomp];"
+                f"[vcomp]null{ass_filter}[vout]"
+            )
+            return filters
+
+        else:
+            zoom_expr = ",crop=w='trunc(iw/1.05/2)*2':h='trunc(ih/1.05/2)*2',scale=1080:608" if energy_zoom else ""
+            filters = (
+                f"{bg_stream};"
+                f"[0:v]scale=1080:608:force_original_aspect_ratio=decrease{zoom_expr}[fg];"
+                "[bg][fg]overlay=(W-w)/2:(H-h)/2[vcomp];"
+                f"[vcomp]null{ass_filter}[vout]"
+            )
+            return filters
+
+    def _render_safe_fallback(
+        self,
+        raw_video_path: Path,
+        output_vertical: Path,
+        ass_path: Optional[str],
+        background_style: str = "soft_blur",
+        background_color: str = "#000000",
+    ) -> None:
+        """Safe fallback render in case filter complex triggers FFmpeg error."""
+        ass_filter = f",{ffmpeg_ass_filter(ass_path)}" if ass_path else ""
+
+        clean_bg_color = background_color.strip()
+        if not clean_bg_color.startswith("#"):
+            clean_bg_color = "#" + clean_bg_color
+        if not re.match(r"^#[0-9a-fA-F]{6}$", clean_bg_color):
+            clean_bg_color = "#000000"
+
+        if background_style == "solid_black":
+            bg_stream = "color=c=black:s=1080x1920:r=30[bg]"
+        elif background_style == "custom_color":
+            bg_stream = f"color=c='{clean_bg_color}':s=1080x1920:r=30[bg]"
+        elif background_style == "heavy_blur":
+            bg_stream = "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=45:5[bg]"
+        else:
+            bg_stream = "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:4[bg]"
+
+        fallback_filter = (
+            f"{bg_stream};"
+            "[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
+            f"[bg][fg]overlay=(W-w)/2:(H-h)/2{ass_filter}[v]"
+        )
+        cmd = [
+            self.ffmpeg_bin, "-y",
+            "-i", str(raw_video_path),
+            "-filter_complex", fallback_filter,
+            "-map", "[v]", "-map", "0:a?",
+            "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+            "-c:a", "aac", "-b:a", "160k",
+            "-movflags", "+faststart",
+            str(output_vertical),
+        ]
+        subprocess.run(cmd, capture_output=True, timeout=60, creationflags=_hidden_flags())
+        cmd = [
+            self.ffmpeg_bin, "-y",
+            "-i", str(raw_video_path),
+            "-filter_complex", fallback_filter,
+            "-map", "[v]", "-map", "0:a?",
+            "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+            "-c:a", "aac", "-b:a", "160k",
+            "-movflags", "+faststart",
+            str(output_vertical),
+        ]
+        subprocess.run(cmd, capture_output=True, timeout=60, creationflags=_hidden_flags())

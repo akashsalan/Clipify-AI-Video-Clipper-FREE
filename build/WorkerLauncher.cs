@@ -13,8 +13,8 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 [assembly: ComVisible(false)]
-[assembly: AssemblyVersion("3.1.0.0")]
-[assembly: AssemblyFileVersion("3.1.0.0")]
+[assembly: AssemblyVersion("3.2.1.0")]
+[assembly: AssemblyFileVersion("3.2.1.0")]
 
 namespace ClipifyAI
 {
@@ -26,16 +26,8 @@ namespace ClipifyAI
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
             string mainPy = Path.Combine(baseDir, "main.py");
             
-            // Prefer dedicated AI runtime
-            string pythonExe = Path.Combine(baseDir, "runtime", "Scripts", "python.exe");
-            if (!File.Exists(pythonExe))
-            {
-                pythonExe = Path.Combine(baseDir, ".venv", "Scripts", "python.exe");
-            }
-            if (!File.Exists(pythonExe))
-            {
-                pythonExe = "python.exe";
-            }
+            // Prefer dedicated AI runtime matching Python 3.11
+            string pythonExe = FindPythonInterpreter(baseDir);
             
             ProcessStartInfo psi = new ProcessStartInfo();
             psi.FileName = pythonExe;
@@ -67,6 +59,39 @@ namespace ClipifyAI
                 Console.Error.WriteLine("Clipify AI worker launcher error: " + ex.Message);
                 return 1;
             }
+        }
+
+        static string FindPythonInterpreter(string baseDir)
+        {
+            string runtimeEnv = Environment.GetEnvironmentVariable("CLIPPEDAI_RUNTIME");
+            if (!string.IsNullOrEmpty(runtimeEnv))
+            {
+                string envPy = Path.Combine(runtimeEnv, "Scripts", "python.exe");
+                if (File.Exists(envPy)) return envPy;
+            }
+
+            string[] candidates = new string[]
+            {
+                Path.Combine(baseDir, "runtime", "Scripts", "python.exe"),
+                Path.Combine(baseDir, "..", "runtime", "Scripts", "python.exe"),
+                Path.Combine(baseDir, ".venv", "Scripts", "python.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "ClipifyAI", "runtime", "Scripts", "python.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "ClipifyAI", "python311", "python.exe"),
+                @"L:\tester\runtime\Scripts\python.exe",
+                @"L:\clipp tester\runtime\Scripts\python.exe",
+                @"C:\Python311\python.exe",
+                @"C:\Program Files\Python311\python.exe"
+            };
+
+            foreach (string candidate in candidates)
+            {
+                if (File.Exists(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            return "python.exe";
         }
     }
 }
