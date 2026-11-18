@@ -44,9 +44,10 @@ Everything runs on your computer—preserving **100% privacy**, with **zero mont
 
 | Package | Version | Size | Checksum (SHA-256) | Download |
 | :--- | :---: | :---: | :--- | :--- |
-| **`Clipify.AI.Setup.3.7.0.exe`** | `v3.7.0` | **347.7 MB** | `C59E33B767D66D33878DCA419527463B7CE57BA59314F9A3EF604BFFA3D76B14` | [**Download v3.7.0**](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.7.0/Clipify.AI.Setup.3.7.0.exe) |
-| **`Clipify Setup 3.7.0.exe`** | `v3.7.0` | **347.7 MB** | `C59E33B767D66D33878DCA419527463B7CE57BA59314F9A3EF604BFFA3D76B14` | [**Download v3.7.0**](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.7.0/Clipify.Setup.3.7.0.exe) |
-| **`Clipify.AI.Setup.exe`** | `v3.7.0` | **347.7 MB** | `C59E33B767D66D33878DCA419527463B7CE57BA59314F9A3EF604BFFA3D76B14` | [**Download v3.7.0**](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.7.0/Clipify.AI.Setup.exe) |
+| **`Clipify.AI.Setup.3.7.0.exe`** | `v3.7.0` | **347.7 MB** | `6EAD269E5F545F591C7AF6355E8FAF8B372FD110017DDA42947E5D7882BBED00` | [**Download v3.7.0**](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.7.0/Clipify.AI.Setup.3.7.0.exe) |
+| **`Clipify Setup 3.7.0.exe`** | `v3.7.0` | **347.7 MB** | `6EAD269E5F545F591C7AF6355E8FAF8B372FD110017DDA42947E5D7882BBED00` | [**Download v3.7.0**](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.7.0/Clipify%20Setup%203.7.0.exe) |
+| **`Clipify.AI.Setup.exe`** | `v3.7.0` | **347.7 MB** | `6EAD269E5F545F591C7AF6355E8FAF8B372FD110017DDA42947E5D7882BBED00` | [**Download v3.7.0**](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.7.0/Clipify.AI.Setup.exe) |
+| **`Clipify.Setup.exe`** | `v3.7.0` | **347.7 MB** | `6EAD269E5F545F591C7AF6355E8FAF8B372FD110017DDA42947E5D7882BBED00` | [**Download v3.7.0**](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.7.0/Clipify.Setup.exe) |
 
 #### Verify installer integrity in PowerShell:
 ```powershell

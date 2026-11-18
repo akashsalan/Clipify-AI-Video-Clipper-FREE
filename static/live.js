@@ -180,8 +180,43 @@
     setupModal();
     setupConsole();
     setupCopyButtons();
+    loadOllamaModels();
     fetchRankedClips();
     startPolling();
+  }
+
+  async function loadOllamaModels() {
+    if (!liveModelSelect) return;
+    try {
+      const resp = await fetch('/api/models');
+      const data = await resp.json();
+      const models = (data && Array.isArray(data.models)) ? data.models : [];
+      if (models.length > 0) {
+        const prevVal = liveModelSelect.value;
+        liveModelSelect.innerHTML = '';
+        models.forEach((m) => {
+          const opt = document.createElement('option');
+          opt.value = m;
+          opt.textContent = `${m} (Local)`;
+          liveModelSelect.appendChild(opt);
+        });
+        const fastOpt = document.createElement('option');
+        fastOpt.value = 'heuristic';
+        fastOpt.textContent = 'Built-in Fast AI';
+        liveModelSelect.appendChild(fastOpt);
+
+        const saved = localStorage.getItem('clipify_live_model');
+        if (saved && Array.from(liveModelSelect.options).some(o => o.value === saved)) {
+          liveModelSelect.value = saved;
+        } else if (Array.from(liveModelSelect.options).some(o => o.value === prevVal)) {
+          liveModelSelect.value = prevVal;
+        } else if (data.default && Array.from(liveModelSelect.options).some(o => o.value === data.default)) {
+          liveModelSelect.value = data.default;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not load Ollama models for Live Studio:', e);
+    }
   }
 
   function setupConsole() {
@@ -311,6 +346,7 @@
         auto_captions: toggleAutoCaptions ? toggleAutoCaptions.checked : true,
         auto_clip_interval: autoClipIntervalSelect ? parseInt(autoClipIntervalSelect.value, 10) : 5,
         auto_clip_target: autoClipTargetInput ? parseInt(autoClipTargetInput.value, 10) : 10,
+        model_name: liveModelSelect ? liveModelSelect.value : 'qwen2.5:3b',
         caption_style: captionStyleSelect ? captionStyleSelect.value : 'highlight',
         caption_font: captionFontSelect ? captionFontSelect.value : 'Montserrat Extra Bold',
         background_style: bgStyleSelect ? bgStyleSelect.value : 'soft_blur',
@@ -324,6 +360,14 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       }).catch(() => {});
+    }
+
+    if (liveModelSelect) {
+      liveModelSelect.addEventListener('change', () => {
+        localStorage.setItem('clipify_live_model', liveModelSelect.value);
+        appendConsoleLog(`Active AI model switched to: ${liveModelSelect.value}`, 'info');
+        sendLivePrefs();
+      });
     }
 
     [toggleAutoEdit, toggleFaceTrack, toggleGamingLayout, toggleAutoCaptions, captionStyleSelect, captionFontSelect].forEach(el => {
@@ -1180,10 +1224,11 @@
     }
 
     try {
+      const chosenModel = liveModelSelect ? liveModelSelect.value : null;
       const resp = await fetch('/api/live/clips/rank', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ top_n: 10 }),
+        body: JSON.stringify({ top_n: 10, model_name: chosenModel }),
       });
       const data = await resp.json();
       if (!resp.ok) {

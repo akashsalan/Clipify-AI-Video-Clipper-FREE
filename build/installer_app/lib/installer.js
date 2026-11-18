@@ -1088,6 +1088,8 @@ class Installer extends EventEmitter {
     // Check for local pre-bundled wheels (offline first, zero network failure)
     const wheelsDir = path.join(path.dirname(requirements), 'wheels');
     const bundledSpacyWheel = path.join(wheelsDir, 'en_core_web_sm-3.8.0-py3-none-any.whl');
+    let effectiveRequirements = requirements;
+
     if (fs.existsSync(bundledSpacyWheel)) {
       this.note('Installing pre-bundled Kokoro English model wheel (offline)', 'pkg');
       const wheelInstall = await this.runProcess(
@@ -1098,13 +1100,24 @@ class Installer extends EventEmitter {
       if (wheelInstall.code === 0) {
         this.note('Pre-bundled Kokoro English model wheel installed successfully', 'info');
       }
+
+      // Filter out remote en-core-web-sm from requirements to prevent pip hash mismatch or network failure
+      try {
+        const rawReqs = fs.readFileSync(requirements, 'utf8');
+        const filteredLines = rawReqs.split(/\r?\n/).filter(line => !/^en-core-web-sm\s*@\s*https:\/\//i.test(line.trim()));
+        const cleanReqPath = path.join(this.options.installDir, 'requirements-clean.txt');
+        fs.writeFileSync(cleanReqPath, filteredLines.join('\n'), 'utf8');
+        effectiveRequirements = cleanReqPath;
+      } catch (_) {
+        effectiveRequirements = requirements;
+      }
     }
 
     const pipArgs = ['-m', 'pip', 'install', '--disable-pip-version-check', '--progress-bar', 'on'];
     if (fs.existsSync(wheelsDir)) {
       pipArgs.push('--find-links', wheelsDir);
     }
-    pipArgs.push('-r', requirements);
+    pipArgs.push('-r', effectiveRequirements);
 
     const pipResult = await this.runProcess(
       venvPython,
@@ -1208,7 +1221,7 @@ class Installer extends EventEmitter {
       if (fs.existsSync(wheelsDir)) {
         retryArgs.push('--find-links', wheelsDir);
       }
-      retryArgs.push('-r', requirements);
+      retryArgs.push('-r', effectiveRequirements);
 
       const retryResult = await this.runProcess(
         venvPython,
@@ -1343,6 +1356,22 @@ class Installer extends EventEmitter {
 
   async installNarrationModel(venvPython) {
     const requirements = path.join(this.options.installDir, 'requirements-runtime.txt');
+    const wheelsDir = path.join(path.dirname(requirements), 'wheels');
+    const bundledSpacyWheel = path.join(wheelsDir, 'en_core_web_sm-3.8.0-py3-none-any.whl');
+
+    if (fs.existsSync(bundledSpacyWheel)) {
+      this.note('Installing pre-bundled Kokoro English model wheel (offline)', 'pkg');
+      const wheelResult = await this.runProcess(
+        venvPython,
+        ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-deps', '--force-reinstall', bundledSpacyWheel],
+        { timeoutMs: 5 * 60 * 1000 }
+      );
+      if (wheelResult.code === 0) {
+        this.note('Kokoro English model restored successfully from local bundle', 'ok');
+        return;
+      }
+    }
+
     if (!fs.existsSync(requirements)) {
       throw new Error('requirements-runtime.txt missing; cannot repair the Kokoro English model');
     }

@@ -1252,10 +1252,11 @@ def live_rank_clips():
     data = request.get_json(silent=True) or {}
     top_n = int(data.get("top_n", 10))
     clip_ids = data.get("clip_ids")
+    model_name = data.get("model_name")
     mgr = _get_live_studio_mgr()
     threading.Thread(
         target=mgr.rank_clips_ai,
-        kwargs={"top_n": top_n, "clip_ids": clip_ids},
+        kwargs={"top_n": top_n, "clip_ids": clip_ids, "model_name": model_name},
         daemon=True,
     ).start()
     return jsonify({"success": True, "message": "AI clip ranking initiated"})

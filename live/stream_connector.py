@@ -138,6 +138,7 @@ class StreamConnector:
                 cmd = [
                     self.python_bin, "-m", "yt_dlp",
                     "--dump-json", "--no-warnings", "--no-playlist",
+                    "--extractor-args", "youtube:player_client=android,web",
                     "--socket-timeout", "10",
                     self.source_url,
                 ]
@@ -205,20 +206,37 @@ class StreamConnector:
         return self.stream_metadata
 
     def _resolve_youtube_stream(self) -> tuple[bool, list[str], str]:
-        """Resolve YouTube Live stream manifests using yt-dlp."""
+        """Resolve YouTube Live stream manifests using yt-dlp with anti-bot arguments."""
         self._notify_status("resolving", "Resolving YouTube Live stream feed...")
         try:
             cmd = [
                 self.python_bin, "-m", "yt_dlp",
                 "-g", "--no-warnings", "--no-playlist",
+                "--extractor-args", "youtube:player_client=android,web",
                 "-f", "bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/b",
                 "--socket-timeout", "15",
                 self.source_url,
             ]
             proc = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=25,
+                cmd, capture_output=True, text=True, timeout=45,
                 creationflags=_hidden_flags(),
             )
+            if proc.returncode != 0:
+                # Fallback to general best format
+                logger.info("Retrying YouTube stream resolution with fallback format...")
+                cmd_fallback = [
+                    self.python_bin, "-m", "yt_dlp",
+                    "-g", "--no-warnings", "--no-playlist",
+                    "--extractor-args", "youtube:player_client=android,web",
+                    "-f", "best/b/bv*+ba",
+                    "--socket-timeout", "15",
+                    self.source_url,
+                ]
+                proc = subprocess.run(
+                    cmd_fallback, capture_output=True, text=True, timeout=30,
+                    creationflags=_hidden_flags(),
+                )
+
             if proc.returncode != 0:
                 err = proc.stderr.strip()
                 logger.warning("yt-dlp stream resolution failed: %s", err)
@@ -229,6 +247,8 @@ class StreamConnector:
                     clean_err = "This live stream is private."
                 elif "recording is not available" in err or "not available" in err:
                     clean_err = "This live stream has ended or is unavailable."
+                elif "Sign in to confirm you’re not a bot" in err:
+                    clean_err = "YouTube bot check triggered. Please try again or use another stream."
                 elif err:
                     first_err_line = [l for l in err.splitlines() if "ERROR:" in l]
                     if first_err_line:
@@ -242,7 +262,7 @@ class StreamConnector:
             logger.info("yt-dlp resolved %d stream manifest URL(s)", len(lines))
             return True, lines, ""
         except subprocess.TimeoutExpired:
-            return False, [], "Stream resolution timed out (25s)."
+            return False, [], "Stream resolution timed out (45s). Please verify link or try again."
         except Exception as e:
             logger.exception("Error resolving YouTube stream: %s", e)
             return False, [], str(e)

@@ -264,9 +264,15 @@ class LiveStudioManager:
     def _probe_and_start(self) -> None:
         """Background probe and stream launch."""
         if self.connector:
-            meta = self.connector.probe_metadata()
-            self.stream_metadata = meta
             self.connector.start()
+            def _async_probe():
+                try:
+                    meta = self.connector.probe_metadata()
+                    if meta:
+                        self.stream_metadata = meta
+                except Exception:
+                    pass
+            threading.Thread(target=_async_probe, daemon=True).start()
 
     def stop_session(self) -> None:
         """Stop capture and transcription cleanly."""
@@ -484,9 +490,22 @@ class LiveStudioManager:
                 return None
 
             duration_sec = max(10, min(90, duration_sec))
-            current_time = (time.time() - self.session_start_time) if self.session_start_time else 0.0
-            start_sec = max(0.0, current_time - duration_sec)
-            end_sec = current_time
+            buf_duration = self.buffer.get_window_duration()
+            if buf_duration < min(float(duration_sec), 20.0):
+                self.log_activity(
+                    f"Buffer is still accumulating ({buf_duration:.0f}s / {duration_sec}s). Please wait for sufficient buffer to generate a full {duration_sec}s Short.",
+                    "warn",
+                )
+                return None
+
+            # Base times on recorded buffer chunks to guarantee exact length and audio sync
+            if self.buffer.chunks:
+                end_sec = self.buffer.chunks[-1].end_sec
+                start_sec = max(self.buffer.chunks[0].start_sec, end_sec - float(duration_sec))
+            else:
+                current_time = (time.time() - self.session_start_time) if self.session_start_time else 0.0
+                start_sec = max(0.0, current_time - duration_sec)
+                end_sec = current_time
 
             title = f"Live Highlight #{len(self.clips) + 1}"
             category = "High-energy moments"
@@ -538,9 +557,21 @@ class LiveStudioManager:
             if not self.session_active or not self.buffer or not self.generator:
                 self.log_activity("Batch Clip failed: no active live recording session.", "error")
                 return []
-            current_time = (time.time() - self.session_start_time) if self.session_start_time else 0.0
             buf_duration = self.buffer.get_window_duration()
-            available_start = max(0.0, current_time - buf_duration)
+            if buf_duration < min(float(duration_sec), 20.0):
+                self.log_activity(
+                    f"Buffer is still accumulating ({buf_duration:.0f}s / {duration_sec}s). Please wait for sufficient buffer before generating batch Shorts.",
+                    "warn",
+                )
+                return []
+
+            if self.buffer.chunks:
+                available_start = self.buffer.chunks[0].start_sec
+                current_time = self.buffer.chunks[-1].end_sec
+            else:
+                current_time = (time.time() - self.session_start_time) if self.session_start_time else 0.0
+                available_start = max(0.0, current_time - buf_duration)
+
             transcripts_copy = list(self.recent_transcripts)
             prefs = dict(self.editing_prefs)
 
@@ -564,9 +595,10 @@ class LiveStudioManager:
                         s = available_start
                         e = min(current_time, s + target_dur)
                     s = max(0.0, s)
-                    words = sub[0].get("text", "").split()[:4]
-                    t_title = (" ".join(words).title() + "!") if words else f"Live Highlight #{len(self.clips) + len(intervals) + 1}"
-                    intervals.append((s, e, t_title))
+                    if e - s >= min(target_dur, 20.0):
+                        words = sub[0].get("text", "").split()[:4]
+                        t_title = (" ".join(words).title() + "!") if words else f"Live Highlight #{len(self.clips) + len(intervals) + 1}"
+                        intervals.append((s, e, t_title))
 
         # 2. Fill remaining intervals by staggering full target_dur slices across the available buffer
         if len(intervals) < count:
@@ -579,7 +611,8 @@ class LiveStudioManager:
                     start_i = available_start
                     end_i = min(current_time, start_i + target_dur)
                 start_i = max(0.0, start_i)
-                intervals.append((start_i, end_i, f"Live Highlight #{len(self.clips) + len(intervals) + 1}"))
+                if end_i - start_i >= min(target_dur, 20.0):
+                    intervals.append((start_i, end_i, f"Live Highlight #{len(self.clips) + len(intervals) + 1}"))
 
         generated: list[dict[str, Any]] = []
         for idx, (s_time, e_time, title) in enumerate(intervals[:count]):
@@ -687,7 +720,12 @@ class LiveStudioManager:
             if len(self.ranking_logs) > 100:
                 self.ranking_logs.pop(0)
 
-    def rank_clips_ai(self, top_n: int = 10, clip_ids: Optional[list[str]] = None) -> list[dict[str, Any]]:
+    def rank_clips_ai(
+        self,
+        top_n: int = 10,
+        clip_ids: Optional[list[str]] = None,
+        model_name: Optional[str] = None,
+    ) -> list[dict[str, Any]]:
         """Ranks existing clips using Ollama AI, predicting hook strength and viral potential."""
         with self._lock:
             if self.is_ranking:
@@ -697,6 +735,8 @@ class LiveStudioManager:
             candidates = list(self.clips)
             if clip_ids:
                 candidates = [c for c in candidates if c.get("id") in clip_ids]
+            if not model_name:
+                model_name = self.editing_prefs.get("model_name")
 
         self.log_ranking("Initializing AI Ranking Engine...", "system")
         if not candidates:
@@ -707,22 +747,37 @@ class LiveStudioManager:
 
         self.log_ranking(f"Found {len(candidates)} candidate clips for AI evaluation (Top {top_n} selection).", "info")
 
-        # Discover Ollama model
-        model_name = "qwen2.5:latest"
+        # Discover or connect to selected Ollama model
         ollama_url = "http://localhost:11434"
-        try:
-            req = urllib.request.Request(f"{ollama_url}/api/tags")
-            with urllib.request.urlopen(req, timeout=2) as resp:
-                tags_data = json.loads(resp.read().decode())
-                models = [m.get("name") for m in tags_data.get("models", [])]
-                for m in models:
-                    if "qwen" in m.lower():
-                        model_name = m
-                        break
-                self.log_ranking(f"Connected to local Ollama engine (model: {model_name}).", "success")
-        except Exception:
-            self.log_ranking("Ollama local service offline; utilizing heuristic viral retention analyzer.", "warn")
-            model_name = "heuristic"
+        selected_model = (model_name or "").strip()
+        if selected_model == "heuristic":
+            self.log_ranking("Using Built-in Fast AI heuristic viral analyzer.", "info")
+            active_model = "heuristic"
+        else:
+            active_model = "heuristic"
+            try:
+                req = urllib.request.Request(f"{ollama_url}/api/tags")
+                with urllib.request.urlopen(req, timeout=3) as resp:
+                    tags_data = json.loads(resp.read().decode())
+                    available_models = [m.get("name") for m in tags_data.get("models", [])]
+                    if selected_model and any(selected_model.lower() in m.lower() or m.lower() in selected_model.lower() for m in available_models):
+                        # Matched chosen model
+                        for m in available_models:
+                            if selected_model.lower() in m.lower() or m.lower() in selected_model.lower():
+                                active_model = m
+                                break
+                    elif available_models:
+                        active_model = available_models[0]
+                    
+                    if active_model != "heuristic":
+                        self.log_ranking(f"Connected to Ollama engine (model: {active_model}).", "success")
+                    else:
+                        self.log_ranking("No compatible Ollama model found; using Built-in Fast AI.", "warn")
+            except Exception:
+                self.log_ranking("Ollama local service offline; utilizing heuristic viral retention analyzer.", "warn")
+                active_model = "heuristic"
+
+        model_name = active_model
 
         scored_clips = []
         for idx, clip in enumerate(candidates):
@@ -766,7 +821,7 @@ class LiveStudioManager:
                         data=json.dumps(chat_payload).encode("utf-8"),
                         headers={"Content-Type": "application/json"},
                     )
-                    with urllib.request.urlopen(chat_req, timeout=8) as resp:
+                    with urllib.request.urlopen(chat_req, timeout=25) as resp:
                         res = json.loads(resp.read().decode())
                         content = res.get("message", {}).get("content", "").strip()
                         m = re.search(r"\{.*\}", content, re.DOTALL)
