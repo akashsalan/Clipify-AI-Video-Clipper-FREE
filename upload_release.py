@@ -12,40 +12,47 @@ RELEASE_NAME = "Clipify AI v3.2.1"
 ASSET_NAME = "Clipify.AI.Setup.exe"
 FILE_PATH = r"L:\ClipifyAI\Clipify.AI.Setup.exe"
 
-RELEASE_NOTES = """## Clipify AI v3.2.1 Release Notes
+RELEASE_NOTES = """## Clipify AI v3.2.1: LIVE Stream Clipping & Studio Release
 
 ### 🚀 What's New in v3.2.1
 
-1. **🟣 Twitch Live & YouTube Live Ingestion**:
+1. **🔴 LIVE Stream Clipping Engine & Studio (BETA)**:
+   - Dedicated Live Studio with real-time AI live monitoring and automated vertical 9:16 Shorts clipping.
    - Direct live stream ingestion from **Twitch** (`https://www.twitch.tv/<channel>` or channel name) and **YouTube Live**.
-   - Integrated live stream player with low-latency monitoring, volume controls, and diagnostic snapshot inspection.
-   - OBS Studio RTMP ingestion (`rtmp://127.0.0.1:1935/live`) for direct game broadcasts.
+   - Integrated low-latency live player embed with stream telemetry, buffer monitoring, and diagnostics.
+   - OBS Studio local RTMP ingestion (`rtmp://127.0.0.1:1935/live`) for direct game and reaction broadcasts.
 
-2. **📟 Live Studio Activity Console**:
-   - Integrated real-time activity terminal displaying timestamped logs for stream ingestion, buffer slices, Whisper transcription, ASS styling, and video rendering.
-   - Instant visual progress telemetry whenever clicking "Clip Highlight" or generating batch Shorts.
+2. **⚡ Export-Ready Live Clips & Batch Clipping**:
+   - Multi-clip batch generation: choose 1, 2, 4, 6, 8, or 10 Shorts per batch.
+   - Quick duration pills (15s, 30s, 60s) with one-click instant highlight capture.
+   - High-energy moment detection powered by local Ollama / Qwen LLM.
 
-3. **🎵 Perfect Audio Sync & Word-by-Word Captions**:
+3. **📟 Live Studio Activity Console**:
+   - Integrated real-time activity terminal displaying timestamped logs for stream ingestion, buffer extraction, audio sync, Whisper transcription, ASS styling, and video rendering.
+   - Instant visual feedback and progress telemetry on every clipping action.
+
+4. **🎵 Perfect Audio Sync & Word-by-Word Captions**:
    - Permanent fix for audio/video drift using strict presentation timestamp realignment (`aresample=async=1:first_pts=0`) and constant frame rate (`cfr`).
    - Direct on-the-fly speech recognition fallback guaranteeing 100% reliable word-by-word animated karaoke subtitles for every clip.
 
-4. **⚡ Auto-Clipping Interval & Storage Notice**:
+5. **⚡ Auto-Clipping Interval & Storage Notice**:
    - Themed application modal notifying users of periodic auto-clipping (default every 5 minutes) and local disk space usage.
    - Configurable auto-clipping timer: choose between 2m, 3m, 5m, 10m, or 15m intervals.
 
-5. **🎨 Prominent Caption, Font & Watermark Styling**:
+6. **🎨 Custom Branding, Fonts & Canvas Styling**:
    - Option to disable subtitles completely (`None (Disable Captions)`).
    - Custom branding watermark overlay (e.g. `@channel • LIVE`) with position and hex color selection.
    - 10 creator fonts (Montserrat Extra Bold, Arial Black, Impact, Segoe UI Black, etc.).
    - Canvas backgrounds: Soft Ambient Blur, Heavy Cinematic Blur, Solid Black, or Custom Brand Color.
 
-6. **🛡️ Defender-Safe & Clean Installer**:
+7. **🛡️ Defender-Safe & Clean Installer (Zero Smart App Control Conflicts)**:
+   - Fixed uninstaller registration so dynamic unsigned setup stubs are never left behind in `%LOCALAPPDATA%`, preventing Windows 11 Smart App Control (SAC) blocks.
    - Native C# binaries (`Launcher.cs`, `WorkerLauncher.cs`) compiled with Microsoft `.NET Framework csc.exe`, verified 100% clean of trojans and heuristic detections.
-   - *Windows SmartScreen note*: Since this is an open-source binary without an enterprise EV certificate, Windows Defender SmartScreen may display *"Windows protected your PC"*. Click **More info** → **Run anyway**.
-   - Preserves GitHub release `v3.1.0` intact.
+   - *Windows SmartScreen note*: Since this is a free open-source binary without an enterprise EV certificate, Windows Defender SmartScreen may display *"Windows protected your PC"*. Simply click **More info** → **Run anyway**.
+   - Release `v3.1.0` remains intact and preserved on GitHub.
 
-7. **🧪 100% Quality Assurance Verification**:
-   - All 117 QA tests passing.
+8. **🧪 100% Quality Assurance Verification**:
+   - All 117 QA unit tests passing.
    - Zero regressions across Create, Narrate, Ollama models, and PyTorch pipelines.
 
 ### 📦 Download & Install

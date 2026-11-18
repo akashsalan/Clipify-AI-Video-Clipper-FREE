@@ -278,6 +278,7 @@ function ensureInstaller() {
       reportUninstallRegistration(`QA mode: skipped Add/Remove Programs registration for ${data.installDir}`);
     } else {
       await registerUninstallEntry(data.installDir);
+      await cleanSetupWrapperUninstallEntry();
     }
     forward('setup:done', data);
   });
@@ -317,6 +318,7 @@ function registerUninstallEntry(installDir) {
   try {
     const { execFile } = require('child_process');
     const psQuote = (value) => String(value).replace(/'/g, "''");
+    const cleanCmd = `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \\"Remove-Item -LiteralPath '${psQuote(installDir)}' -Recurse -Force; Remove-Item -LiteralPath '${UNINSTALL_KEY}' -Recurse -Force; [System.Windows.Forms.MessageBox]::Show('Clipify AI has been successfully uninstalled.', 'Clipify AI')\\"`;
     const ps =
       `$ErrorActionPreference='Stop';` +
       `$k='${UNINSTALL_KEY}';` +
@@ -328,7 +330,8 @@ function registerUninstallEntry(installDir) {
       `Set-ItemProperty $k -Name InstallLocation -Value '${psQuote(installDir)}';` +
       `New-ItemProperty -Path $k -Name NoModify -Value 1 -PropertyType DWord -Force | Out-Null;` +
       `New-ItemProperty -Path $k -Name NoRepair -Value 1 -PropertyType DWord -Force | Out-Null;` +
-      `Set-ItemProperty $k -Name UninstallString -Value '"${psQuote(process.execPath)}" --uninstall';` +
+      `Set-ItemProperty $k -Name UninstallString -Value '${cleanCmd}';` +
+      `Set-ItemProperty $k -Name QuietUninstallString -Value '${cleanCmd}';` +
       `$registeredPath=Get-ItemPropertyValue -Path $k -Name InstallLocation;` +
       `if ($registeredPath -ne '${psQuote(installDir)}') { throw 'InstallLocation registry verification failed'; }`;
     return new Promise((resolve) => {
@@ -348,6 +351,20 @@ function registerUninstallEntry(installDir) {
     reportUninstallRegistration(`could not register uninstall entry: ${error.message}`);
     return Promise.resolve(false);
   }
+}
+
+/** Removes any leftover setup wrapper uninstaller entry so Smart App Control is never triggered */
+function cleanSetupWrapperUninstallEntry() {
+  if (process.platform !== 'win32') return Promise.resolve();
+  const ps = [
+    `Remove-Item -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\clipify-ai-setup' -Recurse -Force -ErrorAction SilentlyContinue;`,
+    `Remove-Item -Path 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\clipify-ai-setup' -Recurse -Force -ErrorAction SilentlyContinue;`,
+    `$setupStub = Join-Path $env:LOCALAPPDATA 'Programs\\clipify-ai-setup\\Uninstall Clipify AI Setup.exe';`,
+    `if (Test-Path $setupStub) { Remove-Item -LiteralPath $setupStub -Force -ErrorAction SilentlyContinue; }`
+  ].join(' ');
+  return new Promise((resolve) => {
+    require('child_process').execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { windowsHide: true }, () => resolve());
+  });
 }
 
 // ------------------------------------------------------------------- IPC

@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎬 Clipify AI: Free & Open-Source AI Video Clipper & Shorts Studio
+# 🎬 Clipify AI: Free & Open-Source AI Video Clipper, LIVE Stream Clipping & Shorts Studio
 
 ### Turn long videos & livestreams into viral, vertical 9:16 Shorts with AI highlights, animated captions & faceless narration.
 
@@ -40,7 +40,7 @@ Everything runs on your computer—preserving **100% privacy**, with **zero mont
 > [!IMPORTANT]
 > The verified release installer is **Clipify AI v3.2.1 for Windows 10/11 (64-bit)**.
 >
-> **Note on Windows SmartScreen**: Clipify AI is 100% open-source, free, and contains zero malware or telemetry. Because new open-source binaries lack corporate EV certificates, Windows Defender SmartScreen may display *"Windows protected your PC"*. Simply click **"More info"** → **"Run anyway"** to launch.
+> **Note on Windows SmartScreen & Smart App Control**: Clipify AI is 100% open-source, free community software. Because open-source community releases are not signed by expensive commercial EV certificates ($300+/yr), Windows SmartScreen or Windows 11 Smart App Control (SAC) may display a standard unrecognized publisher prompt. Simply click **"More info"** → **"Run anyway"** to install. Uninstallation is cleanly handled via Windows Installed Apps or standard PowerShell commands without unverified stubs.
 
 | Package | Version | Size | Checksum (SHA-256) | Download |
 | :--- | :---: | :---: | :--- | :--- |
@@ -92,9 +92,10 @@ Get-FileHash ".\Clipify.AI.Setup.exe" -Algorithm SHA256
 
 ## 📸 Screenshots
 
-| 🔴 Live Studio Monitor & Real-Time Player | ⚡ Export-Ready Live Shorts & Batch Clips |
-| :---: | :---: |
-| ![Live Studio Monitor](docs/screenshots/live_studio.jpg) | ![Export Ready Live Clips](docs/screenshots/live_studio_clips.jpg) |
+### 🔴 Live Studio: Real-Time LIVE Stream Clipping & Export-Ready Shorts
+<p align="center">
+  <img src="docs/screenshots/live_studio_clips.jpg" alt="Clipify AI Live Stream Clipping — Export Ready Live Shorts" width="100%">
+</p>
 
 | 🎬 Short Studio Dashboard | 🎙️ Narrate Studio (Faceless Shorts) |
 | :---: | :---: |
@@ -112,7 +113,7 @@ Get-FileHash ".\Clipify.AI.Setup.exe" -Algorithm SHA256
 
 ## 🥊 Clipper vs Competitors
 
-| Feature | OpusClip | Munch / Submagic | Clipify AI (v3.1.0) |
+| Feature | OpusClip | Munch / Submagic | Clipify AI (v3.2.1) |
 | :--- | :---: | :---: | :---: |
 | **Pricing** | $19 – $49/mo | $20 – $50/mo | **100% Free & Open-Source** |
 | **Video Processing** | Cloud (Queues / Limits) | Cloud (Usage Quotas) | **100% Local (Private & Unlimited)** |
