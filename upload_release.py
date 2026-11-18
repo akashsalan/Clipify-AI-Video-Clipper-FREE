@@ -104,39 +104,36 @@ def main():
         else:
             raise
 
-    # 2. Update release if exists, or create if not found
+    # 2. Recreate release to update publication timestamp to current time
     if release:
-        print(f"Updating release {TAG} metadata on GitHub...")
-        patch_payload = {
-            "name": RELEASE_NAME,
-            "body": RELEASE_NOTES,
-        }
-        patch_req = urllib.request.Request(
+        print(f"Deleting previous release {TAG} (id: {release['id']}) to refresh publication timestamp...")
+        del_req = urllib.request.Request(
             f"https://api.github.com/repos/{REPO}/releases/{release['id']}",
-            data=json.dumps(patch_payload).encode("utf-8"),
-            headers={**headers, "Content-Type": "application/json"},
-            method="PATCH"
+            headers=headers,
+            method="DELETE"
         )
-        with urllib.request.urlopen(patch_req) as resp:
-            release = json.loads(resp.read().decode())
-            print(f"Successfully updated release {TAG} name and body on GitHub!")
-    else:
-        payload = {
-            "tag_name": TAG,
-            "target_commitish": "main",
-            "name": RELEASE_NAME,
-            "body": RELEASE_NOTES,
-            "draft": False,
-            "prerelease": False
-        }
-        create_req = urllib.request.Request(
-            f"https://api.github.com/repos/{REPO}/releases",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={**headers, "Content-Type": "application/json"}
-        )
-        with urllib.request.urlopen(create_req) as resp:
-            release = json.loads(resp.read().decode())
-            print(f"Created fresh release {TAG} (id: {release['id']}) with current timestamp")
+        with urllib.request.urlopen(del_req):
+            print(f"Deleted previous release {TAG}.")
+        release = None
+        time.sleep(1)
+
+    print(f"Creating fresh release {TAG} with current timestamp...")
+    payload = {
+        "tag_name": TAG,
+        "target_commitish": "main",
+        "name": RELEASE_NAME,
+        "body": RELEASE_NOTES,
+        "draft": False,
+        "prerelease": False
+    }
+    create_req = urllib.request.Request(
+        f"https://api.github.com/repos/{REPO}/releases",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={**headers, "Content-Type": "application/json"}
+    )
+    with urllib.request.urlopen(create_req) as resp:
+        release = json.loads(resp.read().decode())
+        print(f"Created fresh release {TAG} (id: {release['id']}) published at {release.get('published_at')}")
 
     upload_url_template = release["upload_url"] # e.g. "https://uploads.github.com/repos/.../releases/{release_id}/assets{?name,label}"
     base_upload_url = upload_url_template.split("{")[0]
