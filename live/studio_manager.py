@@ -246,7 +246,7 @@ class LiveStudioManager:
 
             self.session_active = True
             self.session_start_time = time.time()
-            self.last_auto_clip_time = time.time()
+            self.last_auto_clip_time = 0.0
             self.status = "connecting"
             self.status_detail = f"Connecting to {self.source_type.upper()} live stream..."
             self.recent_transcripts.clear()
@@ -365,17 +365,18 @@ class LiveStudioManager:
                 target = self.auto_clip_target
                 interval_sec = self.auto_clip_interval * 60
                 last_time = self.last_auto_clip_time
+                target_dur = float(self.editing_prefs.get("clip_duration", 30))
 
             if current_clips_count >= target:
                 continue
 
-            now = time.time()
-            if (now - last_time) < interval_sec:
+            buf_dur = self.buffer.get_window_duration() if self.buffer else 0.0
+            if buf_dur < min(28.0, target_dur):
                 continue
 
-            # Ensure minimum buffer is accumulated
-            buf_dur = self.buffer.get_window_duration() if self.buffer else 0.0
-            if buf_dur < 15.0:
+            now = time.time()
+            is_initial = (current_clips_count == 0 and last_time == 0.0 and buf_dur >= min(28.0, target_dur))
+            if not is_initial and (now - last_time) < interval_sec:
                 continue
 
             with self._lock:
@@ -396,7 +397,7 @@ class LiveStudioManager:
             # If no transcript candidate found (sparse speech or silence), synthesize rolling buffer highlight
             if not candidate:
                 current_time = (time.time() - self.session_start_time) if self.session_start_time else 0.0
-                clip_dur = 30.0
+                clip_dur = target_dur
                 start_sec = max(0.0, current_time - clip_dur)
                 end_sec = current_time
                 candidate = HighlightCandidate(
@@ -416,29 +417,51 @@ class LiveStudioManager:
             ).start()
 
     def _trigger_clip_generation(self, candidate: HighlightCandidate) -> None:
-        """Renders an auto-detected highlight into MP4 clips."""
+        """Renders an auto-detected highlight into MP4 clips with user configured duration."""
         if not self.generator:
             return
 
-        self.log_activity(f"Rendering highlight Short: \"{candidate.title}\" ({candidate.start_sec:.1f}s - {candidate.end_sec:.1f}s)...", "info")
+        with self._lock:
+            target_dur = float(self.editing_prefs.get("clip_duration", 30))
+            current_time = (time.time() - self.session_start_time) if self.session_start_time else candidate.end_sec
+            buf_dur = self.buffer.get_window_duration() if self.buffer else target_dur
+            available_start = max(0.0, current_time - buf_dur)
+
+            # Symmetrically center the slice on the highlight candidate
+            center = (candidate.start_sec + candidate.end_sec) / 2.0
+            half = target_dur / 2.0
+            clip_start = center - half
+            clip_end = center + half
+
+            if clip_end > current_time:
+                clip_end = current_time
+                clip_start = clip_end - target_dur
+            if clip_start < available_start:
+                clip_start = available_start
+                clip_end = min(current_time, clip_start + target_dur)
+
+            clip_start = max(0.0, clip_start)
+            if clip_end - clip_start < 10.0 and (current_time - available_start) >= 10.0:
+                clip_end = min(current_time, clip_start + 10.0)
+
+            transcripts = [
+                t for t in self.recent_transcripts
+                if t.get("start", 0) <= clip_end and t.get("end", 0) >= clip_start
+            ]
+            if not transcripts:
+                transcripts = list(self.recent_transcripts[-10:])
+            prefs = dict(self.editing_prefs)
+
+        self.log_activity(f"Rendering highlight Short: \"{candidate.title}\" ({clip_start:.1f}s - {clip_end:.1f}s, target {target_dur:.0f}s)...", "info")
         self._emit_event("highlight_detected", {
             "title": candidate.title,
             "category": candidate.category,
             "score": candidate.score,
         })
 
-        with self._lock:
-            transcripts = [
-                t for t in self.recent_transcripts
-                if t.get("start", 0) <= candidate.end_sec and t.get("end", 0) >= candidate.start_sec
-            ]
-            if not transcripts:
-                transcripts = list(self.recent_transcripts[-10:])
-            prefs = dict(self.editing_prefs)
-
         clip_data = self.generator.render_clip(
-            start_sec=candidate.start_sec,
-            end_sec=candidate.end_sec,
+            start_sec=clip_start,
+            end_sec=clip_end,
             title=candidate.title,
             category=candidate.category,
             subtitle_text=candidate.transcript_snippet,
@@ -522,31 +545,41 @@ class LiveStudioManager:
             prefs = dict(self.editing_prefs)
 
         self.log_activity(f"Batch Clip requested: targeting {count} Shorts ({duration_sec}s each) from buffer...", "info")
+        target_dur = float(duration_sec)
         intervals: list[tuple[float, float, str]] = []
 
-        # 1. Look for distinct speech burst groups
-        if len(transcripts_copy) >= count * 2:
+        # 1. Look for distinct speech burst groups and center full duration slice on them
+        if len(transcripts_copy) >= count:
             step = max(1, len(transcripts_copy) // count)
             for i in range(count):
                 sub = transcripts_copy[i * step : (i + 1) * step]
                 if sub:
-                    s = max(available_start, float(sub[0].get("start", current_time - duration_sec)))
-                    e = min(current_time, float(sub[-1].get("end", s + duration_sec)))
-                    if e - s < 8.0:
-                        e = min(current_time, s + duration_sec)
+                    speech_center = (float(sub[0].get("start", current_time)) + float(sub[-1].get("end", current_time))) / 2.0
+                    s = speech_center - (target_dur / 2.0)
+                    e = speech_center + (target_dur / 2.0)
+                    if e > current_time:
+                        e = current_time
+                        s = e - target_dur
+                    if s < available_start:
+                        s = available_start
+                        e = min(current_time, s + target_dur)
+                    s = max(0.0, s)
                     words = sub[0].get("text", "").split()[:4]
                     t_title = (" ".join(words).title() + "!") if words else f"Live Highlight #{len(self.clips) + len(intervals) + 1}"
                     intervals.append((s, e, t_title))
 
-        # 2. Fill remaining intervals by staggering across the available buffer
+        # 2. Fill remaining intervals by staggering full target_dur slices across the available buffer
         if len(intervals) < count:
-            span = max(float(count * 12), current_time - available_start)
-            slice_dur = min(float(duration_sec), max(10.0, span / count))
-            for i in range(count - len(intervals)):
-                end_i = current_time - (i * slice_dur * 0.85)
-                start_i = max(available_start, end_i - slice_dur)
-                if end_i - start_i >= 6.0:
-                    intervals.append((start_i, end_i, f"Live Highlight #{len(self.clips) + len(intervals) + 1}"))
+            needed = count - len(intervals)
+            for i in range(needed):
+                shift = i * (target_dur * 0.5)
+                end_i = current_time - shift
+                start_i = end_i - target_dur
+                if start_i < available_start:
+                    start_i = available_start
+                    end_i = min(current_time, start_i + target_dur)
+                start_i = max(0.0, start_i)
+                intervals.append((start_i, end_i, f"Live Highlight #{len(self.clips) + len(intervals) + 1}"))
 
         generated: list[dict[str, Any]] = []
         for idx, (s_time, e_time, title) in enumerate(intervals[:count]):

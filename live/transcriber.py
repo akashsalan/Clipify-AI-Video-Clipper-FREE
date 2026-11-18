@@ -1,11 +1,12 @@
 """Incremental speech transcription for Clipify AI Live Studio.
 
-Reuses the existing local WhisperX / Whisper pipeline to transcribe
-live audio segments as they arrive, emitting timestamped utterances.
+Utilizes in-memory faster-whisper CTranslate2 model for sub-second,
+real-time transcription of incoming live stream audio chunks.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import queue
@@ -33,28 +34,29 @@ class LiveTranscriptSegment:
 
 
 class LiveTranscriber:
-    """Manages incremental transcription of incoming live stream chunks."""
+    """Manages high-speed incremental transcription of live stream audio chunks."""
 
     def __init__(
         self,
         python_bin: str,
         ffmpeg_bin: str,
-        model_name: str = "base",
+        model_name: str = "tiny",
         device: str = "cpu",
         on_segment: Optional[Callable[[LiveTranscriptSegment], None]] = None,
     ):
         self.python_bin = python_bin
         self.ffmpeg_bin = ffmpeg_bin
-        self.model_name = model_name
+        self.model_name = model_name or "tiny"
         self.device = device
         self.on_segment = on_segment
 
-        self.audio_queue: queue.Queue[tuple[Path, float, float]] = queue.Queue(maxsize=100)
+        self.audio_queue: queue.Queue[tuple[Path, float, float]] = queue.Queue(maxsize=150)
         self.transcripts: list[LiveTranscriptSegment] = []
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._worker_thread: Optional[threading.Thread] = None
         self._model_instance: Any = None
+        self._model_loaded: bool = False
 
     def start(self) -> None:
         """Start the background transcription processor."""
@@ -74,7 +76,7 @@ class LiveTranscriber:
         try:
             self.audio_queue.put_nowait((chunk_wav_path, start_sec, duration))
         except queue.Full:
-            logger.warning("Live audio transcription queue is full; dropping chunk")
+            logger.warning("Live audio transcription queue is full; dropping older chunk")
 
     def get_recent_transcripts(self, last_n_seconds: float = 300.0) -> list[LiveTranscriptSegment]:
         """Retrieve transcribed utterances within the last N seconds."""
@@ -90,15 +92,35 @@ class LiveTranscriber:
         with self._lock:
             return " ".join(s.text for s in self.transcripts)
 
+    def _get_model(self) -> Any:
+        """Lazy-load the in-memory faster-whisper model."""
+        if not self._model_loaded:
+            try:
+                from faster_whisper import WhisperModel
+                # Use tiny/base with int8 quantization for instant real-time decoding
+                compute_type = "int8" if self.device == "cpu" else "float16"
+                m_name = "tiny" if self.model_name in ("tiny", "default", "") else "base"
+                logger.info("Initializing in-memory WhisperModel (%s, %s)...", m_name, compute_type)
+                self._model_instance = WhisperModel(m_name, device=self.device, compute_type=compute_type)
+                logger.info("WhisperModel successfully initialized in-memory.")
+            except Exception as e:
+                logger.warning("In-memory faster-whisper load failed (%s); will fallback to subproc", e)
+                self._model_instance = None
+            self._model_loaded = True
+        return self._model_instance
+
     def _worker_loop(self) -> None:
-        """Pulls audio chunks from the queue and transcribes them."""
-        # Ensure OpenMP stack size is safe
+        """Pulls audio chunks from the queue and transcribes them with sub-100ms latency."""
         os.environ.setdefault("OMP_STACKSIZE", "64M")
         os.environ.setdefault("KMP_STACKSIZE", "64M")
+        os.environ.setdefault("OMP_NUM_THREADS", "2")
+
+        # Pre-warm model
+        self._get_model()
 
         while not self._stop_event.is_set():
             try:
-                item = self.audio_queue.get(timeout=1.0)
+                item = self.audio_queue.get(timeout=0.5)
             except queue.Empty:
                 continue
 
@@ -118,7 +140,6 @@ class LiveTranscriber:
                 logger.debug("Transcription error for chunk %s: %s", wav_path.name, e)
             finally:
                 self.audio_queue.task_done()
-                # Clean up temporary WAV file
                 try:
                     if wav_path.exists():
                         wav_path.unlink()
@@ -130,37 +151,53 @@ class LiveTranscriber:
         if not wav_path.exists() or wav_path.stat().st_size < 1000:
             return []
 
-        # Run whisper inline via python script for memory isolation
+        segments: list[LiveTranscriptSegment] = []
+        model = self._get_model()
+
+        # In-memory execution (sub-100ms)
+        if model is not None:
+            try:
+                segs, _ = model.transcribe(
+                    str(wav_path),
+                    beam_size=1,
+                    best_of=1,
+                    temperature=0.0,
+                    condition_on_previous_text=False,
+                )
+                for s in segs:
+                    txt = s.text.strip()
+                    if txt:
+                        seg_start = chunk_start + float(s.start)
+                        seg_end = chunk_start + float(s.end)
+                        segments.append(
+                            LiveTranscriptSegment(
+                                start_sec=round(seg_start, 2),
+                                end_sec=round(max(seg_end, seg_start + 0.6), 2),
+                                text=txt,
+                            )
+                        )
+                return segments
+            except Exception as e:
+                logger.debug("In-memory faster-whisper transcribe failed (%s), trying fallback", e)
+
+        # Fallback to subprocess if in-memory fails
         code = f"""
 import os, sys, json
-os.environ['OMP_STACKSIZE'] = '64M'
-os.environ['KMP_STACKSIZE'] = '64M'
-os.environ['OMP_NUM_THREADS'] = '2'
-
 try:
-    import whisperx
-    device = '{self.device}'
-    compute_type = 'int8' if device == 'cpu' else 'float16'
-    model = whisperx.load_model('{self.model_name}', device, compute_type=compute_type)
-    audio = whisperx.load_audio(r'{str(wav_path)}')
-    result = model.transcribe(audio, batch_size=4)
-    print('JSON:' + json.dumps(result.get('segments', [])))
+    from faster_whisper import WhisperModel
+    m = WhisperModel('tiny', device='cpu', compute_type='int8')
+    segs, _ = m.transcribe(r'{str(wav_path)}', beam_size=1)
+    res = [{'start': s.start, 'end': s.end, 'text': s.text.strip()} for s in segs if s.text.strip()]
+    print('JSON:' + json.dumps(res))
 except Exception as e:
-    try:
-        import whisper
-        model = whisper.load_model('{self.model_name}')
-        result = model.transcribe(r'{str(wav_path)}')
-        print('JSON:' + json.dumps(result.get('segments', [])))
-    except Exception as e2:
-        print('ERR:' + str(e2))
+    print('ERR:' + str(e))
 """
         proc = subprocess.run(
             [self.python_bin, "-c", code],
             capture_output=True, text=True,
-            timeout=40, creationflags=_hidden_flags(),
+            timeout=15, creationflags=_hidden_flags(),
         )
 
-        segments: list[LiveTranscriptSegment] = []
         for line in proc.stdout.splitlines():
             if line.startswith("JSON:"):
                 try:
@@ -172,13 +209,12 @@ except Exception as e:
                             seg_end = chunk_start + float(s.get("end", 0.0))
                             segments.append(
                                 LiveTranscriptSegment(
-                                    start_sec=seg_start,
-                                    end_sec=max(seg_end, seg_start + 0.5),
+                                    start_sec=round(seg_start, 2),
+                                    end_sec=round(max(seg_end, seg_start + 0.6), 2),
                                     text=text,
                                 )
                             )
                 except Exception as ex:
-                    logger.debug("Failed parsing whisper output: %s", ex)
+                    logger.debug("Failed parsing fallback whisper output: %s", ex)
 
         return segments
-

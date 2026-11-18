@@ -1205,10 +1205,20 @@ def live_batch_clip():
     count = int(data.get("count", 4))
     duration = int(data.get("duration", 30))
     mgr = _get_live_studio_mgr()
-    clips = mgr.batch_clip(count=count, duration_sec=duration)
-    if not clips:
+    if not mgr.session_active or not mgr.buffer:
         return jsonify({"error": "Failed generating batch clips. Ensure the stream is actively recording."}), 400
-    return jsonify({"success": True, "clips": clips, "count": len(clips)})
+
+    threading.Thread(
+        target=mgr.batch_clip,
+        kwargs={"count": count, "duration_sec": duration},
+        daemon=True,
+    ).start()
+
+    return jsonify({
+        "success": True,
+        "status": "started",
+        "message": f"Started generating {count} Shorts ({duration}s each) in background. They will populate the gallery as rendered.",
+    })
 
 
 @app.delete("/api/live/clips/<clip_id>")

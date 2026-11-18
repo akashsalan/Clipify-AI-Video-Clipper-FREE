@@ -485,8 +485,8 @@
             body: JSON.stringify({ count: count, duration: currentSelectedDuration }),
           });
           const data = await resp.json();
-          if (resp.ok && data.clips) {
-            appendConsoleLog(`Batch clip finished: ${data.clips.length} Shorts created successfully.`, 'success');
+          if (resp.ok) {
+            appendConsoleLog(`Batch process started: generating ${count} Shorts in background. Watch the export gallery below as each Short completes!`, 'success');
             await fetchClips();
           } else {
             appendConsoleLog(`Batch clip error: ${data.error || 'Failed generating clips'}`, 'error');
@@ -496,8 +496,10 @@
           appendConsoleLog(`Batch clip network error: ${err.message}`, 'error');
           alert('Batch clip error: ' + err.message);
         } finally {
-          btnBatchClip.disabled = false;
-          btnBatchClip.innerHTML = origHtml;
+          setTimeout(() => {
+            btnBatchClip.disabled = false;
+            btnBatchClip.innerHTML = origHtml;
+          }, 3500);
         }
       });
     }
@@ -768,9 +770,9 @@
       fetchStatus();
       if (isSessionActive) {
         fetchTranscripts();
-        fetchClips();
       }
-    }, 1500);
+      fetchClips();
+    }, 2000);
   }
 
   async function fetchStatus() {

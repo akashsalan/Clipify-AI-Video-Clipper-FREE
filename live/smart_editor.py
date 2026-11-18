@@ -52,15 +52,19 @@ class SmartEditor:
         self.analyzer = ContentAnalyzer(ffmpeg_bin)
         self.caption_styler = CaptionStyler()
 
+    _shared_direct_whisper = None
+
     def _transcribe_direct(self, raw_video_path: Path) -> list[dict[str, Any]]:
         """Run fast local speech recognition directly on the extracted raw clip."""
         if not raw_video_path.exists() or raw_video_path.stat().st_size < 1000:
             return []
         try:
-            logger.info("Running on-the-fly clip transcription for %s...", raw_video_path.name)
+            logger.info("Running fast direct clip transcription for %s...", raw_video_path.name)
             from faster_whisper import WhisperModel
-            model = WhisperModel("base", device="cpu", compute_type="int8")
-            segments, _ = model.transcribe(str(raw_video_path), word_timestamps=True)
+            if SmartEditor._shared_direct_whisper is None:
+                SmartEditor._shared_direct_whisper = WhisperModel("tiny", device="cpu", compute_type="int8")
+            model = SmartEditor._shared_direct_whisper
+            segments, _ = model.transcribe(str(raw_video_path), word_timestamps=True, beam_size=1)
             results = []
             for seg in segments:
                 words = []
@@ -125,7 +129,7 @@ class SmartEditor:
         facecam_detected = False
         badges: List[str] = []
 
-        if auto_edit_enabled and gaming_layout_enabled and profile.mode == "gaming_facecam" and profile.facecam_box:
+        if auto_edit_enabled and gaming_layout_enabled:
             layout = "gaming_split"
             facecam_detected = True
             badges.append("🎮 Gaming Split")
@@ -295,8 +299,18 @@ class SmartEditor:
         else:  # soft_blur
             bg_stream = "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:3[bg]"
 
-        if layout == "gaming_split" and profile.facecam_box:
+        if layout == "gaming_split":
             box = profile.facecam_box
+            if not box:
+                if profile.primary_face_x is not None:
+                    fx = profile.primary_face_x
+                    cw, ch = 0.35, 0.44
+                    cx = max(0.0, min(1.0 - cw, fx - cw / 2.0))
+                    cy = 0.52
+                    box = {"x": cx, "y": cy, "w": cw, "h": ch}
+                else:
+                    box = {"x": 0.02, "y": 0.50, "w": 0.38, "h": 0.46}
+
             if isinstance(box, dict):
                 cx, cy, cw, ch = float(box["x"]), float(box["y"]), float(box["w"]), float(box["h"])
             else:
