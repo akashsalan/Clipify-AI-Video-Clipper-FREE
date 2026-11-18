@@ -1141,6 +1141,7 @@ def live_connect():
         "face_tracking": bool(data.get("face_tracking", True)),
         "gaming_layout": bool(data.get("gaming_layout", True)),
         "auto_captions": bool(data.get("auto_captions", True)),
+        "auto_clip_interval": int(data.get("auto_clip_interval", 5)),
         "caption_style": str(data.get("caption_style", "highlight")),
         "caption_font": str(data.get("caption_font", "Montserrat Extra Bold")),
         "background_style": str(data.get("background_style", "soft_blur")),
@@ -1221,6 +1222,12 @@ def live_delete_clip(clip_id: str):
 def live_transcript():
     mgr = _get_live_studio_mgr()
     return jsonify({"segments": mgr.get_recent_transcripts()})
+
+
+@app.get("/api/live/console")
+def live_console():
+    mgr = _get_live_studio_mgr()
+    return jsonify({"logs": mgr.get_console_logs()})
 
 
 @app.get("/api/live/obs-config")

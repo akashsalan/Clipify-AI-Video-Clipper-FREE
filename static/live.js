@@ -92,7 +92,7 @@
   let currentSelectedDuration = 30;
   let showingSnapshotMode = false;
 
-  // Modal elements
+  // Modal and Notice elements
   const clipPreviewModal = document.getElementById('clipPreviewModal');
   const modalClipTitle = document.getElementById('modalClipTitle');
   const modalVideoPlayer = document.getElementById('modalVideoPlayer');
@@ -100,13 +100,55 @@
   const modalDownloadOrigBtn = document.getElementById('modalDownloadOrigBtn');
   const closeClipModal = document.getElementById('closeClipModal');
 
+  // Studio Console and Auto-Clip Notice
+  const studioConsolePanel = document.getElementById('studioConsolePanel');
+  const studioConsoleBody = document.getElementById('studioConsoleBody');
+  const btnClearConsole = document.getElementById('btnClearConsole');
+  const autoClipStorageModal = document.getElementById('autoClipStorageModal');
+  const closeAutoClipModal = document.getElementById('closeAutoClipModal');
+  const btnConfirmAutoClip = document.getElementById('btnConfirmAutoClip');
+  const btnCancelAutoClip = document.getElementById('btnCancelAutoClip');
+  const autoClipIntervalSelect = document.getElementById('autoClipIntervalSelect');
+  const modalAutoClipIntervalSelect = document.getElementById('modalAutoClipIntervalSelect');
+  const modalIntervalLabel = document.getElementById('modalIntervalLabel');
+
+  const renderedConsoleTimestamps = new Set();
+
+  function appendConsoleLog(message, level = 'info', timeStr = null) {
+    if (!studioConsoleBody) return;
+    const now = timeStr || (new Date()).toTimeString().split(' ')[0];
+    const logKey = `${now}_${message}`;
+    if (renderedConsoleTimestamps.has(logKey)) return;
+    renderedConsoleTimestamps.add(logKey);
+    if (renderedConsoleTimestamps.size > 300) {
+      const firstKey = renderedConsoleTimestamps.values().next().value;
+      renderedConsoleTimestamps.delete(firstKey);
+    }
+
+    const line = document.createElement('div');
+    line.className = `console-line ${level}`;
+    line.innerHTML = `<span class="log-time">[${escapeHtml(now)}]</span> <span class="log-msg">${escapeHtml(message)}</span>`;
+    studioConsoleBody.appendChild(line);
+    studioConsoleBody.scrollTop = studioConsoleBody.scrollHeight;
+  }
+
   function init() {
     setupTabs();
     setupActions();
     setupPreferences();
     setupModal();
+    setupConsole();
     setupCopyButtons();
     startPolling();
+  }
+
+  function setupConsole() {
+    if (btnClearConsole && studioConsoleBody) {
+      btnClearConsole.addEventListener('click', () => {
+        renderedConsoleTimestamps.clear();
+        studioConsoleBody.innerHTML = '<div class="console-line system"><span class="log-time">[' + (new Date()).toTimeString().split(' ')[0] + ']</span> Studio activity console cleared.</div>';
+      });
+    }
   }
 
   function setupTabs() {
@@ -126,10 +168,10 @@
             liveSourceUrl.placeholder = 'https://www.youtube.com/watch?v=... or https://www.youtube.com/live/...';
             const hint = document.getElementById('sourceHelpText');
             if (hint) hint.textContent = 'Supports standard YouTube Live stream links and channel /live URLs.';
-          } else if (currentSourceType === 'tiktok') {
-            liveSourceUrl.placeholder = 'https://www.tiktok.com/@username/live';
+          } else if (currentSourceType === 'twitch') {
+            liveSourceUrl.placeholder = 'https://www.twitch.tv/channel or channel name';
             const hint = document.getElementById('sourceHelpText');
-            if (hint) hint.textContent = 'Direct stream link or TikTok user live room. OBS fallback recommended.';
+            if (hint) hint.textContent = 'Twitch live broadcast link (e.g. twitch.tv/channel) or channel username.';
           }
         }
       });
@@ -150,7 +192,61 @@
 
     if (toggleAutoClip && chipAutoClip) {
       toggleAutoClip.addEventListener('change', () => {
-        chipAutoClip.textContent = toggleAutoClip.checked ? 'Auto-Clip: ON' : 'Auto-Clip: OFF';
+        if (toggleAutoClip.checked) {
+          if (modalIntervalLabel && autoClipIntervalSelect) {
+            modalIntervalLabel.textContent = autoClipIntervalSelect.value;
+          }
+          if (autoClipStorageModal) autoClipStorageModal.style.display = 'flex';
+          chipAutoClip.textContent = 'Auto-Clip: ON';
+        } else {
+          chipAutoClip.textContent = 'Auto-Clip: OFF';
+          sendLivePrefs();
+        }
+      });
+    }
+
+    if (closeAutoClipModal && autoClipStorageModal) {
+      closeAutoClipModal.addEventListener('click', () => {
+        autoClipStorageModal.style.display = 'none';
+      });
+    }
+
+    if (btnConfirmAutoClip && autoClipStorageModal) {
+      btnConfirmAutoClip.addEventListener('click', () => {
+        if (modalAutoClipIntervalSelect && autoClipIntervalSelect) {
+          autoClipIntervalSelect.value = modalAutoClipIntervalSelect.value;
+        }
+        autoClipStorageModal.style.display = 'none';
+        if (toggleAutoClip) toggleAutoClip.checked = true;
+        if (chipAutoClip) chipAutoClip.textContent = 'Auto-Clip: ON';
+        appendConsoleLog(`Auto-clipping enabled (interval: ${autoClipIntervalSelect ? autoClipIntervalSelect.value : 5}m). Background monitoring active.`, 'info');
+        sendLivePrefs();
+      });
+    }
+
+    if (btnCancelAutoClip && autoClipStorageModal) {
+      btnCancelAutoClip.addEventListener('click', () => {
+        autoClipStorageModal.style.display = 'none';
+        if (toggleAutoClip) toggleAutoClip.checked = false;
+        if (chipAutoClip) chipAutoClip.textContent = 'Auto-Clip: OFF';
+        appendConsoleLog('Auto-clipping disabled by user.', 'info');
+        sendLivePrefs();
+      });
+    }
+
+    if (autoClipIntervalSelect) {
+      autoClipIntervalSelect.addEventListener('change', () => {
+        if (modalAutoClipIntervalSelect) modalAutoClipIntervalSelect.value = autoClipIntervalSelect.value;
+        if (modalIntervalLabel) modalIntervalLabel.textContent = autoClipIntervalSelect.value;
+        appendConsoleLog(`Auto-clip interval updated to ${autoClipIntervalSelect.value} minutes.`, 'info');
+        sendLivePrefs();
+      });
+    }
+
+    if (modalAutoClipIntervalSelect) {
+      modalAutoClipIntervalSelect.addEventListener('change', () => {
+        if (autoClipIntervalSelect) autoClipIntervalSelect.value = modalAutoClipIntervalSelect.value;
+        if (modalIntervalLabel) modalIntervalLabel.textContent = modalAutoClipIntervalSelect.value;
       });
     }
 
@@ -160,6 +256,7 @@
         face_tracking: toggleFaceTrack ? toggleFaceTrack.checked : true,
         gaming_layout: toggleGamingLayout ? toggleGamingLayout.checked : true,
         auto_captions: toggleAutoCaptions ? toggleAutoCaptions.checked : true,
+        auto_clip_interval: autoClipIntervalSelect ? parseInt(autoClipIntervalSelect.value, 10) : 5,
         caption_style: captionStyleSelect ? captionStyleSelect.value : 'highlight',
         caption_font: captionFontSelect ? captionFontSelect.value : 'Montserrat Extra Bold',
         background_style: bgStyleSelect ? bgStyleSelect.value : 'soft_blur',
@@ -326,6 +423,7 @@
         btnBatchClip.disabled = true;
         const origHtml = btnBatchClip.innerHTML;
         btnBatchClip.innerHTML = `<span>⏳ Creating ${count} Shorts…</span>`;
+        appendConsoleLog(`[ACTION] Batch Clipping triggered: generating ${count} Shorts (${currentSelectedDuration}s each)...`, 'info');
         try {
           const resp = await fetch('/api/live/batch-clip', {
             method: 'POST',
@@ -334,11 +432,14 @@
           });
           const data = await resp.json();
           if (resp.ok && data.clips) {
+            appendConsoleLog(`Batch clip finished: ${data.clips.length} Shorts created successfully.`, 'success');
             await fetchClips();
           } else {
+            appendConsoleLog(`Batch clip error: ${data.error || 'Failed generating clips'}`, 'error');
             alert(data.error || 'Could not generate batch clips.');
           }
         } catch (err) {
+          appendConsoleLog(`Batch clip network error: ${err.message}`, 'error');
           alert('Batch clip error: ' + err.message);
         } finally {
           btnBatchClip.disabled = false;
@@ -396,6 +497,9 @@
       triggerBtn.disabled = true;
       const originalText = triggerBtn.innerHTML;
       triggerBtn.innerHTML = `<span>⏳ Rendering ${duration}s Short…</span>`;
+      appendConsoleLog(`[ACTION] Instant Clip triggered: capturing ${duration}s slice...`, 'info');
+      appendConsoleLog('Aligning audio and video presentation timestamps (aresample=async=1:first_pts=0)...', 'info');
+      appendConsoleLog('Transcribing clip speech for word-level karaoke subtitles & smart cropping...', 'info');
       try {
         const resp = await fetch('/api/live/instant-clip', {
           method: 'POST',
@@ -404,11 +508,14 @@
         });
         const data = await resp.json();
         if (resp.ok && data.clip) {
+          appendConsoleLog(`Instant Short ready: "${data.clip.title}" (${data.clip.duration}s, layout: ${data.clip.layout})`, 'success');
           await fetchClips();
         } else {
+          appendConsoleLog(`Instant Clip failed: ${data.error || 'Server error'}`, 'error');
           alert(data.error || 'Could not generate instant clip.');
         }
       } catch (err) {
+        appendConsoleLog(`Instant Clip error: ${err.message}`, 'error');
         alert('Instant clip error: ' + err.message);
       } finally {
         triggerBtn.disabled = false;
@@ -426,6 +533,7 @@
     const sourceType = isObs ? 'obs' : currentSourceType;
 
     setMonitorState('loading', 'Connecting...', 'Initiating live stream session');
+    appendConsoleLog(`Connecting to ${sourceType.toUpperCase()} stream: ${sourceUrl || 'OBS Studio RTMP'}...`, 'info');
 
     try {
       const resp = await fetch('/api/live/connect', {
@@ -435,6 +543,7 @@
           source_type: sourceType,
           source_url: sourceUrl,
           auto_clip: toggleAutoClip ? toggleAutoClip.checked : true,
+          auto_clip_interval: autoClipIntervalSelect ? parseInt(autoClipIntervalSelect.value, 10) : 5,
           sensitivity: sensitivitySlider ? parseInt(sensitivitySlider.value, 10) : 5,
           buffer_minutes: bufferWindowSelect ? parseInt(bufferWindowSelect.value, 10) : 10,
           model_name: liveModelSelect ? liveModelSelect.value : 'qwen2.5:3b',
@@ -455,11 +564,13 @@
       const data = await resp.json();
       if (!resp.ok) {
         setMonitorState('failed', 'Connection Failed', data.error || 'Could not connect');
+        appendConsoleLog(`Connection failed: ${data.error || 'Could not connect'}`, 'error');
         connectBtn.disabled = false;
         connectBtn.textContent = isObs ? 'Start Listening for OBS' : 'Connect & Start Clipping';
         return;
       }
 
+      appendConsoleLog(`Connection initialized. Ingestion pipeline active.`, 'success');
       updateUIStatus(data.status);
     } catch (err) {
       setMonitorState('failed', 'Network Error', err.message);
@@ -584,12 +695,27 @@
       if (liveConnectedControls) liveConnectedControls.style.display = 'flex';
       setMonitorState('live');
 
-      // Check YouTube live stream URL for embedded playback
+      // Check YouTube or Twitch live stream URL for embedded playback
       const streamUrl = statusData.source_url || (liveSourceUrl ? liveSourceUrl.value.trim() : '');
       const ytId = extractYoutubeId(streamUrl);
+      const twitchCh = (statusData.source_type === 'twitch' || currentSourceType === 'twitch') ? extractTwitchChannel(streamUrl) : null;
+
       if (ytId && monitorLiveEmbed) {
         const expectedSrc = `https://www.youtube-nocookie.com/embed/${ytId}?autoplay=1&mute=0&controls=1&modestbranding=1&rel=0`;
         if (!monitorLiveEmbed.src || !monitorLiveEmbed.src.includes(ytId)) {
+          monitorLiveEmbed.src = expectedSrc;
+        }
+        if (monitorViewToggles) monitorViewToggles.style.display = 'inline-flex';
+        if (!showingSnapshotMode) {
+          monitorLiveEmbed.style.display = 'block';
+          if (monitorVideoFrame) monitorVideoFrame.style.display = 'none';
+        } else {
+          monitorLiveEmbed.style.display = 'none';
+          if (monitorVideoFrame) monitorVideoFrame.style.display = 'block';
+        }
+      } else if (twitchCh && monitorLiveEmbed) {
+        const expectedSrc = `https://player.twitch.tv/?channel=${twitchCh}&parent=localhost&parent=127.0.0.1&muted=false`;
+        if (!monitorLiveEmbed.src || !monitorLiveEmbed.src.includes(`channel=${twitchCh}`)) {
           monitorLiveEmbed.src = expectedSrc;
         }
         if (monitorViewToggles) monitorViewToggles.style.display = 'inline-flex';
@@ -690,12 +816,25 @@
 
       setMonitorState('idle');
     }
+
+    // Stream console logs from status
+    if (statusData.console_logs && Array.isArray(statusData.console_logs)) {
+      statusData.console_logs.forEach(log => {
+        appendConsoleLog(log.message, log.level || 'info', log.time);
+      });
+    }
   }
 
   function extractYoutubeId(url) {
     if (!url) return null;
     const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|live\/))([\w-]{11})/);
     return (match && match[1]) ? match[1] : null;
+  }
+
+  function extractTwitchChannel(url) {
+    if (!url) return null;
+    const clean = url.trim().replace(/^https?:\/\//i, '').replace(/^(www\.)?twitch\.tv\//i, '').replace(/^\/+/, '').split(/[\/?#]/)[0];
+    return clean ? clean.replace(/^@/, '') : null;
   }
 
   async function fetchTranscripts() {

@@ -52,7 +52,7 @@
   <!-- Minimalist Header -->
   <header class="topbar">
     <div>
-      <h1 class="living-title">LIVE STUDIO <span class="title-beta-tag">BETA</span></h1>
+      <h1 class="living-title">LIVE STUDIO <span class="badge-beta-pill">BETA</span></h1>
       <p class="topbar-subtitle">Turn live moments into clips automatically.</p>
     </div>
     <div class="top-actions">
@@ -69,9 +69,9 @@
         <span class="tab-icon">▶</span>
         <div><b>YouTube Live</b><small>Paste any public live stream link</small></div>
       </button>
-      <button class="source-tab" data-source="tiktok" type="button">
-        <span class="tab-icon">♬</span>
-        <div><b>TikTok Live</b><small>Connect live stream or OBS</small></div>
+      <button class="source-tab" data-source="twitch" type="button">
+        <span class="tab-icon">🟣</span>
+        <div><b>Twitch Live</b><small>Connect live stream or channel</small></div>
       </button>
       <button class="source-tab" data-source="obs" type="button">
         <span class="tab-icon">⚲</span>
@@ -229,6 +229,23 @@
             </button>
           </div>
         </div>
+
+        <!-- Studio Activity Console -->
+        <div class="studio-console-panel" id="studioConsolePanel">
+          <div class="console-header">
+            <div class="console-title">
+              <span class="console-prompt">&gt;_</span>
+              <span>STUDIO ACTIVITY CONSOLE</span>
+              <span class="console-pulse">●</span>
+            </div>
+            <div class="console-actions">
+              <button type="button" class="console-clear-btn" id="btnClearConsole" title="Clear console logs">Clear</button>
+            </div>
+          </div>
+          <div class="console-body" id="studioConsoleBody">
+            <div class="console-line system"><span class="log-time">[INIT]</span> Studio activity console online. Ready for live events.</div>
+          </div>
+        </div>
       </section>
 
       <!-- Real-time Speech Transcription Feed -->
@@ -270,6 +287,20 @@
               <input type="checkbox" id="toggleAutoClip" checked>
               <span class="tweak-switch"></span>
             </label>
+          </div>
+
+          <div class="pref-row auto-clip-interval-row" id="autoClipIntervalRow">
+            <div>
+              <b>Auto-Clip Interval</b>
+              <small>Time frequency between automated highlight detections</small>
+            </div>
+            <select id="autoClipIntervalSelect" class="compact-select">
+              <option value="2">Every 2 mins</option>
+              <option value="3">Every 3 mins</option>
+              <option value="5" selected>Every 5 mins (Default)</option>
+              <option value="10">Every 10 mins</option>
+              <option value="15">Every 15 mins</option>
+            </select>
           </div>
 
           <div class="pref-row-col">
@@ -495,9 +526,6 @@
           </div>
         </div>
       </section>
-    </div>
-  </div>
-</main>
 
 <!-- Video Preview Modal -->
 <div class="modal-overlay" id="clipPreviewModal" style="display:none;">
@@ -516,7 +544,44 @@
   </div>
 </div>
 
-<script src="{{ url_for('static', filename='live.js', v='20261118-5') }}"></script>
+<!-- Auto-Clip Storage Notice Modal -->
+<div class="modal-overlay" id="autoClipStorageModal" style="display:none;">
+  <div class="modal-card auto-clip-modal-card">
+    <div class="modal-header">
+      <div class="modal-title-with-icon">
+        <span class="modal-warn-icon">⚡</span>
+        <h3>Auto-Clipping &amp; Storage Notice</h3>
+      </div>
+      <button type="button" class="close-btn" id="closeAutoClipModal">✕</button>
+    </div>
+    <div class="modal-body-notice">
+      <p class="modal-notice-intro"><b>Auto-Clipping is active.</b> Clipify AI monitors the stream in the background, detects viral highlight moments, and automatically renders Shorts every <b><span id="modalIntervalLabel">5</span> minutes</b>.</p>
+      <div class="storage-warning-card">
+        <div class="storage-warning-icon">💾</div>
+        <div>
+          <b>Local Disk Storage Usage:</b>
+          <p>Continuous auto-clipping records rolling buffer chunks and encodes 1080x1920 vertical Shorts locally. Over long streams, this will consume disk space. You can change interval or delete clips at any time.</p>
+        </div>
+      </div>
+      <div class="modal-interval-picker">
+        <label for="modalAutoClipIntervalSelect">Auto-Clip Interval:</label>
+        <select id="modalAutoClipIntervalSelect">
+          <option value="2">Every 2 minutes (High Frequency)</option>
+          <option value="3">Every 3 minutes</option>
+          <option value="5" selected>Every 5 minutes (Recommended)</option>
+          <option value="10">Every 10 minutes</option>
+          <option value="15">Every 15 minutes (Storage Saver)</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="primary" id="btnConfirmAutoClip">Got It, Enable Auto-Clipping</button>
+      <button type="button" class="ghost" id="btnCancelAutoClip">Turn Off Auto-Clipping</button>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='live.js', v='20261118-6') }}"></script>
 <script src="{{ url_for('static', filename='tour.js', v='20261118-1') }}"></script>
 </body>
 </html>

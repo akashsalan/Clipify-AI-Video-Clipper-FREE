@@ -1,8 +1,11 @@
 """Unit tests for Live Studio real-time ingestion, rolling buffer, and highlight detection."""
 
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from live.highlight_detector import HighlightDetector, CATEGORIES
 from live.rolling_buffer import RollingBuffer
@@ -33,6 +36,15 @@ class TestLiveStudio(unittest.TestCase):
         conn_tt = StreamConnector("tiktok", "@streamer", self.root, "ffmpeg")
         valid, msg = conn_tt.validate()
         self.assertTrue(valid)
+
+        # Twitch validation
+        conn_tw = StreamConnector("twitch", "https://www.twitch.tv/ninja", self.root, "ffmpeg")
+        valid, msg = conn_tw.validate()
+        self.assertTrue(valid)
+
+        conn_tw_empty = StreamConnector("twitch", "", self.root, "ffmpeg")
+        valid, msg = conn_tw_empty.validate()
+        self.assertFalse(valid)
 
         # OBS validation
         conn_obs = StreamConnector("obs", "", self.root, "ffmpeg")
@@ -113,6 +125,21 @@ class TestLiveStudio(unittest.TestCase):
         self.assertIn("buffer_duration_seconds", status)
         self.assertIn("editing_prefs", status)
         self.assertTrue(status["editing_prefs"]["auto_edit"])
+        self.assertIn("console_logs", status)
+        self.assertGreaterEqual(len(status["console_logs"]), 1)
+
+    def test_studio_manager_console_and_auto_clip(self):
+        mgr = LiveStudioManager(
+            data_dir=self.root,
+            ffmpeg_bin="ffmpeg",
+            python_bin="python",
+        )
+        mgr.log_activity("Test message for console", "info")
+        logs = mgr.get_console_logs()
+        self.assertTrue(any("Test message for console" in l["message"] for l in logs))
+
+        mgr.update_editing_prefs({"auto_clip_interval": 10})
+        self.assertEqual(mgr.auto_clip_interval, 10)
 
     def test_caption_styler_presets(self):
         from live.caption_styler import CaptionStyler, PRESETS

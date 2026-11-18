@@ -46,10 +46,46 @@ class EditDecision:
 class SmartEditor:
     """Intelligent Shorts video editing engine."""
 
-    def __init__(self, ffmpeg_bin: str):
+    def __init__(self, ffmpeg_bin: str, python_bin: Optional[str] = None):
         self.ffmpeg_bin = ffmpeg_bin
+        self.python_bin = python_bin
         self.analyzer = ContentAnalyzer(ffmpeg_bin)
         self.caption_styler = CaptionStyler()
+
+    def _transcribe_direct(self, raw_video_path: Path) -> list[dict[str, Any]]:
+        """Run fast local speech recognition directly on the extracted raw clip."""
+        if not raw_video_path.exists() or raw_video_path.stat().st_size < 1000:
+            return []
+        try:
+            logger.info("Running on-the-fly clip transcription for %s...", raw_video_path.name)
+            from faster_whisper import WhisperModel
+            model = WhisperModel("base", device="cpu", compute_type="int8")
+            segments, _ = model.transcribe(str(raw_video_path), word_timestamps=True)
+            results = []
+            for seg in segments:
+                words = []
+                if hasattr(seg, "words") and seg.words:
+                    for w in seg.words:
+                        w_text = w.word.strip()
+                        if w_text:
+                            words.append({
+                                "word": w_text,
+                                "start": round(w.start, 2),
+                                "end": round(w.end, 2),
+                            })
+                txt = seg.text.strip()
+                if txt:
+                    results.append({
+                        "start": round(seg.start, 2),
+                        "end": round(seg.end, 2),
+                        "text": txt,
+                        "words": words,
+                    })
+            logger.info("Direct clip transcription completed: %d segment(s)", len(results))
+            return results
+        except Exception as e:
+            logger.warning("Direct clip transcription fallback failed: %s", e)
+            return []
 
     def edit(
         self,
@@ -123,13 +159,29 @@ class SmartEditor:
         should_render_captions = auto_captions_enabled and (caption_style.lower() != "none")
         has_custom_text = bool(custom_text)
 
+        effective_transcripts = list(transcripts) if transcripts else []
+        effective_start = clip_start
+        effective_duration = clip_duration
+
+        if should_render_captions:
+            words = self.caption_styler._extract_clip_words(
+                effective_transcripts, effective_start, effective_start + effective_duration, uppercase=False
+            )
+            # If no speech words detected from stream intervals, run direct on-the-fly transcription
+            if not words:
+                direct_segs = self._transcribe_direct(raw_video_path)
+                if direct_segs:
+                    effective_transcripts = direct_segs
+                    effective_start = 0.0
+                    effective_duration = clip_duration
+
         if should_render_captions or has_custom_text:
             temp_ass = output_vertical.parent / "subtitles.ass"
             try:
                 ass_path = self.caption_styler.build_ass(
-                    transcripts=transcripts if should_render_captions else [],
-                    clip_start=clip_start,
-                    clip_duration=clip_duration,
+                    transcripts=effective_transcripts if should_render_captions else [],
+                    clip_start=effective_start,
+                    clip_duration=effective_duration,
                     output_ass_path=str(temp_ass),
                     style_preset="none" if not should_render_captions else caption_style,
                     layout_mode=layout,
@@ -139,7 +191,7 @@ class SmartEditor:
                     custom_text_color=custom_text_color,
                 )
                 if ass_path and os.path.exists(ass_path):
-                    if should_render_captions and transcripts:
+                    if should_render_captions and effective_transcripts:
                         captions_applied = True
                         badges.append("💬 Auto Captions")
                     if has_custom_text:
@@ -159,14 +211,16 @@ class SmartEditor:
             background_color=background_color,
         )
 
-        # 6. Execute FFmpeg Rendering
+        # 6. Execute FFmpeg Rendering with synchronized audio resampling
         cmd = [
             self.ffmpeg_bin, "-y",
             "-i", str(raw_video_path),
             "-filter_complex", filter_str,
             "-map", "[vout]", "-map", "0:a?",
             "-c:v", "libx264", "-preset", "fast", "-crf", "21",
+            "-af", "aresample=async=1:first_pts=0",
             "-c:a", "aac", "-b:a", "160k",
+            "-fps_mode", "cfr",
             "-pix_fmt", "yuv420p",
             "-movflags", "+faststart",
             str(output_vertical),
@@ -342,18 +396,9 @@ class SmartEditor:
             "-filter_complex", fallback_filter,
             "-map", "[v]", "-map", "0:a?",
             "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+            "-af", "aresample=async=1:first_pts=0",
             "-c:a", "aac", "-b:a", "160k",
-            "-movflags", "+faststart",
-            str(output_vertical),
-        ]
-        subprocess.run(cmd, capture_output=True, timeout=60, creationflags=_hidden_flags())
-        cmd = [
-            self.ffmpeg_bin, "-y",
-            "-i", str(raw_video_path),
-            "-filter_complex", fallback_filter,
-            "-map", "[v]", "-map", "0:a?",
-            "-c:v", "libx264", "-preset", "fast", "-crf", "22",
-            "-c:a", "aac", "-b:a", "160k",
+            "-fps_mode", "cfr",
             "-movflags", "+faststart",
             str(output_vertical),
         ]

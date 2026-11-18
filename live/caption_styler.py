@@ -273,8 +273,8 @@ class CaptionStyler:
         words_out: List[Dict[str, Any]] = []
 
         for item in transcripts:
-            t_start = float(item.get("start", 0.0))
-            t_end = float(item.get("end", t_start + 1.0))
+            t_start = float(item.get("start", item.get("start_sec", 0.0)))
+            t_end = float(item.get("end", item.get("end_sec", t_start + 1.0)))
 
             if t_end < clip_start or t_start > clip_end:
                 continue

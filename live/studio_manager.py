@@ -59,11 +59,15 @@ class LiveStudioManager:
         self.live_events: list[dict[str, Any]] = []
         self.recent_transcripts: list[dict[str, Any]] = []
         self.clips: list[dict[str, Any]] = []
+        self.console_logs: list[dict[str, Any]] = []
+        self.auto_clip_interval: int = 5
+        self.last_auto_clip_time: float = time.time()
         self.editing_prefs: dict[str, Any] = {
             "auto_edit": True,
             "auto_captions": True,
             "face_tracking": True,
             "gaming_layout": True,
+            "auto_clip_interval": 5,
             "caption_style": "highlight",
             "caption_font": "Montserrat Extra Bold",
             "background_style": "soft_blur",
@@ -73,8 +77,26 @@ class LiveStudioManager:
             "custom_text_color": "#FFFFFF",
         }
 
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._load_saved_clips()
+        self.log_activity("Live Studio manager initialized. System ready.", "system")
+
+    def log_activity(self, message: str, level: str = "info") -> None:
+        """Record real-time activity for the Live Studio console."""
+        with self._lock:
+            entry = {
+                "time": time.strftime("%H:%M:%S"),
+                "message": message,
+                "level": level,
+            }
+            self.console_logs.append(entry)
+            if len(self.console_logs) > 200:
+                self.console_logs.pop(0)
+            self._emit_event("console_log", entry)
+
+    def get_console_logs(self) -> list[dict[str, Any]]:
+        with self._lock:
+            return list(self.console_logs)
 
     def _load_saved_clips(self) -> None:
         """Load any existing clips from previous sessions on disk."""
@@ -115,6 +137,12 @@ class LiveStudioManager:
             ):
                 if k in prefs:
                     self.editing_prefs[k] = str(prefs[k])
+            if "auto_clip_interval" in prefs:
+                try:
+                    self.auto_clip_interval = max(1, min(60, int(prefs["auto_clip_interval"])))
+                    self.editing_prefs["auto_clip_interval"] = self.auto_clip_interval
+                except Exception:
+                    pass
             return dict(self.editing_prefs)
 
     def start_session(
@@ -237,12 +265,14 @@ class LiveStudioManager:
         self.status_detail = detail
         if status in ("failed", "disconnected") and status == "failed":
             self.session_active = False
+        self.log_activity(f"Stream status: {status.upper()} — {detail}", "info" if status == "live" else "debug")
         self._emit_event("status_change", {"status": status, "detail": detail})
 
     def _on_connector_error(self, err_msg: str) -> None:
         self.status = "failed"
         self.status_detail = f"Stream error: {err_msg}"
         self.session_active = False
+        self.log_activity(f"Stream connector error: {err_msg}", "error")
         self._emit_event("stream_error", {"error": err_msg})
 
     def _on_segment_ready(self, chunk_path: Path, index: int, stream_elapsed: float) -> None:
@@ -251,6 +281,7 @@ class LiveStudioManager:
             return
 
         chunk = self.buffer.add_chunk(chunk_path, index, stream_elapsed)
+        self.log_activity(f"Buffer chunk #{index} captured ({chunk.duration:.1f}s, total buffer: {self.buffer.get_window_duration():.0f}s)", "debug")
 
         # Extract WAV audio for transcription
         wav_path = chunk_path.with_suffix(".wav")
@@ -269,24 +300,31 @@ class LiveStudioManager:
         if len(self.recent_transcripts) > 100:
             self.recent_transcripts.pop(0)
 
+        self.log_activity(f"Transcribed [{segment.start_sec:.1f}s]: \"{segment.text[:55]}\"", "debug")
         self._emit_event("transcript", seg_dict)
 
-        # Check for highlights if auto-clip is enabled
+        # Check for highlights if auto-clip is enabled and interval elapsed
         if self.auto_clip_enabled and self.detector and self.generator:
-            recent_segments = self.transcriber.get_recent_transcripts(last_n_seconds=45.0) if self.transcriber else []
-            candidate = self.detector.evaluate(recent_segments)
-            if candidate:
-                threading.Thread(
-                    target=self._trigger_clip_generation,
-                    args=(candidate,),
-                    daemon=True,
-                ).start()
+            now = time.time()
+            interval_sec = self.auto_clip_interval * 60
+            if (now - self.last_auto_clip_time) >= interval_sec:
+                recent_segments = self.transcriber.get_recent_transcripts(last_n_seconds=45.0) if self.transcriber else []
+                candidate = self.detector.evaluate(recent_segments)
+                if candidate:
+                    self.last_auto_clip_time = now
+                    self.log_activity(f"Auto-clip trigger: highlight \"{candidate.title}\" detected (score: {candidate.score:.1f})", "info")
+                    threading.Thread(
+                        target=self._trigger_clip_generation,
+                        args=(candidate,),
+                        daemon=True,
+                    ).start()
 
     def _trigger_clip_generation(self, candidate: HighlightCandidate) -> None:
         """Renders an auto-detected highlight into MP4 clips."""
         if not self.generator:
             return
 
+        self.log_activity(f"Rendering highlight Short: \"{candidate.title}\" ({candidate.start_sec:.1f}s - {candidate.end_sec:.1f}s)...", "info")
         self._emit_event("highlight_detected", {
             "title": candidate.title,
             "category": candidate.category,
@@ -316,12 +354,14 @@ class LiveStudioManager:
         if clip_data:
             with self._lock:
                 self.clips.insert(0, clip_data)
+            self.log_activity(f"Clip ready: \"{clip_data['title']}\" ({clip_data['duration']}s, {clip_data.get('layout')})", "success")
             self._emit_event("new_clip", clip_data)
 
     def instant_clip(self, duration_sec: int = 30) -> Optional[dict[str, Any]]:
         """User manual trigger: capture the last N seconds into a Short."""
         with self._lock:
             if not self.session_active or not self.buffer or not self.generator:
+                self.log_activity("Instant Clip failed: no active live recording session.", "error")
                 return None
 
             duration_sec = max(10, min(90, duration_sec))
@@ -347,22 +387,28 @@ class LiveStudioManager:
                 transcripts = list(self.recent_transcripts[-10:])
             prefs = dict(self.editing_prefs)
 
-            clip_data = self.generator.render_clip(
-                start_sec=start_sec,
-                end_sec=end_sec,
-                title=title,
-                category=category,
-                transcripts=transcripts,
-                editing_prefs=prefs,
-                energy_score=8.0,
-            )
+        self.log_activity(f"Instant Clip requested: extracting {duration_sec}s slice ({start_sec:.1f}s - {end_sec:.1f}s)...", "info")
+        self.log_activity("Processing video: face tracking, smart reframing, audio synchronization...", "info")
 
-            if clip_data:
+        clip_data = self.generator.render_clip(
+            start_sec=start_sec,
+            end_sec=end_sec,
+            title=title,
+            category=category,
+            transcripts=transcripts,
+            editing_prefs=prefs,
+            energy_score=8.0,
+        )
+
+        if clip_data:
+            with self._lock:
                 self.clips.insert(0, clip_data)
-                self._emit_event("new_clip", clip_data)
-                return clip_data
+            self.log_activity(f"Instant Short ready: \"{clip_data['title']}\" ({clip_data['duration']}s, layout: {clip_data.get('layout')})", "success")
+            self._emit_event("new_clip", clip_data)
+            return clip_data
 
-            return None
+        self.log_activity("Instant Clip render failed during FFmpeg encoding.", "error")
+        return None
 
     def batch_clip(self, count: int = 4, duration_sec: int = 30) -> list[dict[str, Any]]:
         """Generate N professionally edited Shorts from the rolling buffer."""
@@ -371,6 +417,7 @@ class LiveStudioManager:
 
         with self._lock:
             if not self.session_active or not self.buffer or not self.generator:
+                self.log_activity("Batch Clip failed: no active live recording session.", "error")
                 return []
             current_time = (time.time() - self.session_start_time) if self.session_start_time else 0.0
             buf_duration = self.buffer.get_window_duration()
@@ -378,6 +425,7 @@ class LiveStudioManager:
             transcripts_copy = list(self.recent_transcripts)
             prefs = dict(self.editing_prefs)
 
+        self.log_activity(f"Batch Clip requested: targeting {count} Shorts ({duration_sec}s each) from buffer...", "info")
         intervals: list[tuple[float, float, str]] = []
 
         # 1. Look for distinct speech burst groups
@@ -405,7 +453,8 @@ class LiveStudioManager:
                     intervals.append((start_i, end_i, f"Live Highlight #{len(self.clips) + len(intervals) + 1}"))
 
         generated: list[dict[str, Any]] = []
-        for s_time, e_time, title in intervals[:count]:
+        for idx, (s_time, e_time, title) in enumerate(intervals[:count]):
+            self.log_activity(f"Rendering batch Short {idx + 1}/{len(intervals[:count])}: \"{title}\" ({s_time:.1f}s - {e_time:.1f}s)...", "info")
             sub_transcripts = [
                 t for t in transcripts_copy
                 if t.get("start", 0) <= e_time and t.get("end", 0) >= s_time
@@ -422,9 +471,11 @@ class LiveStudioManager:
             if clip_data:
                 with self._lock:
                     self.clips.insert(0, clip_data)
+                self.log_activity(f"Batch Short {idx + 1}/{len(intervals[:count])} completed: \"{title}\"", "success")
                 self._emit_event("new_clip", clip_data)
                 generated.append(clip_data)
 
+        self.log_activity(f"Batch render completed: {len(generated)} Shorts ready in export gallery.", "success")
         return generated
 
     def delete_clip(self, clip_id: str) -> bool:
@@ -465,6 +516,7 @@ class LiveStudioManager:
             "clips_count": len(self.clips),
             "has_preview": has_preview,
             "editing_prefs": dict(self.editing_prefs),
+            "console_logs": list(self.console_logs[-50:]),
         }
 
     def get_recent_transcripts(self) -> list[dict[str, Any]]:

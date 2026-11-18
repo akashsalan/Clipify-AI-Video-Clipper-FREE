@@ -158,11 +158,14 @@ class RollingBuffer:
             if reencode:
                 cmd = [
                     self.ffmpeg_bin, "-y",
+                    "-avoid_negative_ts", "make_zero",
                     "-f", "concat", "-safe", "0", "-i", str(concat_file),
                     "-ss", f"{seek_offset:.2f}",
                     "-t", f"{clip_duration:.2f}",
                     "-c:v", "libx264", "-preset", "fast", "-crf", "20",
+                    "-af", "aresample=async=1:first_pts=0",
                     "-c:a", "aac", "-b:a", "192k",
+                    "-fps_mode", "cfr",
                     "-movflags", "+faststart",
                     str(output_path),
                 ]
