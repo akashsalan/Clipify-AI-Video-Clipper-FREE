@@ -6,3 +6,4 @@
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\clipify-ai-setup"
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\clipify-ai-setup"
 !macroend
+

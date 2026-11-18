@@ -1218,6 +1218,47 @@ def live_delete_clip(clip_id: str):
     return jsonify({"success": ok})
 
 
+@app.post("/api/live/clips/batch-delete")
+def live_batch_delete_clips():
+    data = request.get_json(silent=True) or {}
+    clip_ids = data.get("clip_ids", [])
+    if not isinstance(clip_ids, list) or not clip_ids:
+        return jsonify({"error": "No clip IDs provided for batch deletion"}), 400
+    mgr = _get_live_studio_mgr()
+    deleted = mgr.delete_clips(clip_ids)
+    return jsonify({"success": True, "deleted_count": deleted, "remaining_count": len(mgr.get_clips())})
+
+
+@app.post("/api/live/clips/rank")
+def live_rank_clips():
+    data = request.get_json(silent=True) or {}
+    top_n = int(data.get("top_n", 10))
+    clip_ids = data.get("clip_ids")
+    mgr = _get_live_studio_mgr()
+    threading.Thread(
+        target=mgr.rank_clips_ai,
+        kwargs={"top_n": top_n, "clip_ids": clip_ids},
+        daemon=True,
+    ).start()
+    return jsonify({"success": True, "message": "AI clip ranking initiated"})
+
+
+@app.get("/api/live/clips/rank/status")
+def live_rank_status():
+    mgr = _get_live_studio_mgr()
+    return jsonify({
+        "is_ranking": mgr.is_ranking,
+        "logs": mgr.get_ranking_logs(),
+        "ranked_clips": mgr.get_ranked_clips(),
+    })
+
+
+@app.get("/api/live/clips/ranked")
+def live_ranked_clips():
+    mgr = _get_live_studio_mgr()
+    return jsonify({"ranked_clips": mgr.get_ranked_clips()})
+
+
 @app.get("/api/live/transcript")
 def live_transcript():
     mgr = _get_live_studio_mgr()

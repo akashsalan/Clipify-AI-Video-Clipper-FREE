@@ -77,6 +77,31 @@
   const customTextColorPicker = document.getElementById('customTextColorPicker');
   const customTextColorHex = document.getElementById('customTextColorHex');
   const prefTargetClips = document.getElementById('prefTargetClips');
+  const autoClipTargetInput = document.getElementById('autoClipTargetInput');
+
+  // AI Clip Ranking & Batch Selection Elements
+  const btnRankClipsAi = document.getElementById('btnRankClipsAi');
+  const rankingConsolePanel = document.getElementById('rankingConsolePanel');
+  const rankingConsoleBody = document.getElementById('rankingConsoleBody');
+  const rankingStatusBadge = document.getElementById('rankingStatusBadge');
+  const btnCloseRankingConsole = document.getElementById('btnCloseRankingConsole');
+
+  const chkSelectAllClips = document.getElementById('chkSelectAllClips');
+  const selectedClipsCounter = document.getElementById('selectedClipsCounter');
+  const btnDeleteSelectedClips = document.getElementById('btnDeleteSelectedClips');
+
+  const rankedClipsSection = document.getElementById('rankedClipsSection');
+  const rankedClipsGrid = document.getElementById('rankedClipsGrid');
+  const chkSelectAllRanked = document.getElementById('chkSelectAllRanked');
+  const selectedRankedCounter = document.getElementById('selectedRankedCounter');
+  const btnDeleteSelectedRanked = document.getElementById('btnDeleteSelectedRanked');
+
+  // Selection & Ranking State
+  const selectedClipIds = new Set();
+  const selectedRankedClipIds = new Set();
+  let rankingPollTimer = null;
+  let isRankingActive = false;
+  let lastRankingLogIndex = 0;
 
   // Live Stream Player & Connected Controls
   const monitorLiveEmbed = document.getElementById('monitorLiveEmbed');
@@ -136,9 +161,12 @@
     setupTabs();
     setupActions();
     setupPreferences();
+    setupBatchActions();
+    setupRankingConsole();
     setupModal();
     setupConsole();
     setupCopyButtons();
+    fetchRankedClips();
     startPolling();
   }
 
@@ -243,6 +271,17 @@
       });
     }
 
+    if (autoClipTargetInput) {
+      autoClipTargetInput.addEventListener('change', () => {
+        let val = parseInt(autoClipTargetInput.value, 10);
+        if (isNaN(val) || val < 1) val = 1;
+        if (val > 100) val = 100;
+        autoClipTargetInput.value = val;
+        appendConsoleLog(`Auto-clip target limit set to ${val} clips.`, 'info');
+        sendLivePrefs();
+      });
+    }
+
     if (modalAutoClipIntervalSelect) {
       modalAutoClipIntervalSelect.addEventListener('change', () => {
         if (autoClipIntervalSelect) autoClipIntervalSelect.value = modalAutoClipIntervalSelect.value;
@@ -257,6 +296,7 @@
         gaming_layout: toggleGamingLayout ? toggleGamingLayout.checked : true,
         auto_captions: toggleAutoCaptions ? toggleAutoCaptions.checked : true,
         auto_clip_interval: autoClipIntervalSelect ? parseInt(autoClipIntervalSelect.value, 10) : 5,
+        auto_clip_target: autoClipTargetInput ? parseInt(autoClipTargetInput.value, 10) : 10,
         caption_style: captionStyleSelect ? captionStyleSelect.value : 'highlight',
         caption_font: captionFontSelect ? captionFontSelect.value : 'Montserrat Extra Bold',
         background_style: bgStyleSelect ? bgStyleSelect.value : 'soft_blur',
@@ -544,6 +584,7 @@
           source_url: sourceUrl,
           auto_clip: toggleAutoClip ? toggleAutoClip.checked : true,
           auto_clip_interval: autoClipIntervalSelect ? parseInt(autoClipIntervalSelect.value, 10) : 5,
+          auto_clip_target: autoClipTargetInput ? parseInt(autoClipTargetInput.value, 10) : 10,
           sensitivity: sensitivitySlider ? parseInt(sensitivitySlider.value, 10) : 5,
           buffer_minutes: bufferWindowSelect ? parseInt(bufferWindowSelect.value, 10) : 10,
           model_name: liveModelSelect ? liveModelSelect.value : 'qwen2.5:3b',
@@ -660,6 +701,11 @@
     if (!statusData) return;
     const st = (statusData.status || 'idle').toLowerCase();
     isSessionActive = Boolean(statusData.session_active);
+
+    // Auto-clip target limit sync
+    if (statusData.auto_clip_target && autoClipTargetInput && document.activeElement !== autoClipTargetInput) {
+      autoClipTargetInput.value = statusData.auto_clip_target;
+    }
 
     // Telemetry numbers
     const elapsedStr = statusData.elapsed_seconds ? formatDuration(statusData.elapsed_seconds) : '00:00:00';
@@ -868,6 +914,346 @@
     }
   }
 
+
+  // ==========================================================================
+  // Batch Selection & Batch Actions
+  // ==========================================================================
+
+  function updateBatchClipsToolbar(totalClipsCount = 0) {
+    if (selectedClipsCounter) {
+      const count = selectedClipIds.size;
+      selectedClipsCounter.textContent = `${count} selected`;
+      if (count > 0) {
+        selectedClipsCounter.classList.add('has-selected');
+      } else {
+        selectedClipsCounter.classList.remove('has-selected');
+      }
+    }
+    if (btnDeleteSelectedClips) {
+      btnDeleteSelectedClips.disabled = (selectedClipIds.size === 0);
+    }
+    if (chkSelectAllClips && totalClipsCount > 0) {
+      chkSelectAllClips.checked = (selectedClipIds.size === totalClipsCount);
+      chkSelectAllClips.indeterminate = (selectedClipIds.size > 0 && selectedClipIds.size < totalClipsCount);
+    } else if (chkSelectAllClips) {
+      chkSelectAllClips.checked = false;
+      chkSelectAllClips.indeterminate = false;
+    }
+  }
+
+  function updateBatchRankedToolbar(totalRankedCount = 0) {
+    if (selectedRankedCounter) {
+      const count = selectedRankedClipIds.size;
+      selectedRankedCounter.textContent = `${count} selected`;
+      if (count > 0) {
+        selectedRankedCounter.classList.add('has-selected');
+      } else {
+        selectedRankedCounter.classList.remove('has-selected');
+      }
+    }
+    if (btnDeleteSelectedRanked) {
+      btnDeleteSelectedRanked.disabled = (selectedRankedClipIds.size === 0);
+    }
+    if (chkSelectAllRanked && totalRankedCount > 0) {
+      chkSelectAllRanked.checked = (selectedRankedClipIds.size === totalRankedCount);
+      chkSelectAllRanked.indeterminate = (selectedRankedClipIds.size > 0 && selectedRankedClipIds.size < totalRankedCount);
+    } else if (chkSelectAllRanked) {
+      chkSelectAllRanked.checked = false;
+      chkSelectAllRanked.indeterminate = false;
+    }
+  }
+
+  function setupBatchActions() {
+    if (chkSelectAllClips) {
+      chkSelectAllClips.addEventListener('change', () => {
+        const checkboxes = liveClipsGrid.querySelectorAll('.clip-select-check');
+        const cards = liveClipsGrid.querySelectorAll('.live-clip-card');
+        if (chkSelectAllClips.checked) {
+          checkboxes.forEach(chk => {
+            chk.checked = true;
+            selectedClipIds.add(chk.dataset.id);
+          });
+          cards.forEach(card => card.classList.add('selected'));
+        } else {
+          checkboxes.forEach(chk => {
+            chk.checked = false;
+          });
+          selectedClipIds.clear();
+          cards.forEach(card => card.classList.remove('selected'));
+        }
+        updateBatchClipsToolbar(checkboxes.length);
+      });
+    }
+
+    if (btnDeleteSelectedClips) {
+      btnDeleteSelectedClips.addEventListener('click', async () => {
+        if (selectedClipIds.size === 0) return;
+        const count = selectedClipIds.size;
+        if (!confirm(`Delete ${count} selected clip(s)? This cannot be undone.`)) return;
+        btnDeleteSelectedClips.disabled = true;
+        try {
+          const resp = await fetch('/api/live/clips/batch-delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clip_ids: Array.from(selectedClipIds) }),
+          });
+          const data = await resp.json();
+          appendConsoleLog(`[BATCH] Deleted ${data.deleted_count || count} clip(s).`, 'info');
+          selectedClipIds.clear();
+          await fetchClips();
+          await fetchRankedClips();
+        } catch (err) {
+          alert('Batch delete error: ' + err.message);
+        } finally {
+          btnDeleteSelectedClips.disabled = false;
+        }
+      });
+    }
+
+    if (chkSelectAllRanked) {
+      chkSelectAllRanked.addEventListener('change', () => {
+        const checkboxes = rankedClipsGrid.querySelectorAll('.ranked-clip-check');
+        const cards = rankedClipsGrid.querySelectorAll('.ranked-clip-card');
+        if (chkSelectAllRanked.checked) {
+          checkboxes.forEach(chk => {
+            chk.checked = true;
+            selectedRankedClipIds.add(chk.dataset.id);
+          });
+          cards.forEach(card => card.classList.add('selected'));
+        } else {
+          checkboxes.forEach(chk => {
+            chk.checked = false;
+          });
+          selectedRankedClipIds.clear();
+          cards.forEach(card => card.classList.remove('selected'));
+        }
+        updateBatchRankedToolbar(checkboxes.length);
+      });
+    }
+
+    if (btnDeleteSelectedRanked) {
+      btnDeleteSelectedRanked.addEventListener('click', async () => {
+        if (selectedRankedClipIds.size === 0) return;
+        const count = selectedRankedClipIds.size;
+        if (!confirm(`Delete ${count} selected ranked clip(s)? This cannot be undone.`)) return;
+        btnDeleteSelectedRanked.disabled = true;
+        try {
+          const resp = await fetch('/api/live/clips/batch-delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clip_ids: Array.from(selectedRankedClipIds) }),
+          });
+          const data = await resp.json();
+          appendConsoleLog(`[BATCH] Deleted ${data.deleted_count || count} ranked clip(s).`, 'info');
+          selectedRankedClipIds.clear();
+          await fetchRankedClips();
+          await fetchClips();
+        } catch (err) {
+          alert('Batch delete error: ' + err.message);
+        } finally {
+          btnDeleteSelectedRanked.disabled = false;
+        }
+      });
+    }
+  }
+
+  // ==========================================================================
+  // AI Clip Ranking & Live Process Console
+  // ==========================================================================
+
+  function setupRankingConsole() {
+    if (btnCloseRankingConsole && rankingConsolePanel) {
+      btnCloseRankingConsole.addEventListener('click', () => {
+        rankingConsolePanel.style.display = 'none';
+      });
+    }
+
+    if (btnRankClipsAi) {
+      btnRankClipsAi.addEventListener('click', () => {
+        startAiClipRanking();
+      });
+    }
+  }
+
+  async function startAiClipRanking() {
+    if (isRankingActive) return;
+    isRankingActive = true;
+    lastRankingLogIndex = 0;
+
+    if (rankingConsolePanel) rankingConsolePanel.style.display = 'block';
+    if (rankingStatusBadge) rankingStatusBadge.textContent = 'Ranking with Ollama AI...';
+    if (rankingConsoleBody) {
+      rankingConsoleBody.innerHTML = '<div class="console-line system"><span class="log-time">[' + (new Date()).toTimeString().split(' ')[0] + ']</span> Initializing neural viral potential ranking engine...</div>';
+    }
+    if (btnRankClipsAi) {
+      btnRankClipsAi.disabled = true;
+      btnRankClipsAi.innerHTML = '<span class="sparkle-icon">⏳</span><span>RANKING CLIPS...</span>';
+    }
+
+    try {
+      const resp = await fetch('/api/live/clips/rank', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ top_n: 10 }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        appendRankingLog(data.error || 'Failed to start ranking', 'error');
+        finishRanking();
+        return;
+      }
+
+      // Start polling status
+      if (rankingPollTimer) clearInterval(rankingPollTimer);
+      rankingPollTimer = setInterval(pollRankingStatus, 600);
+    } catch (err) {
+      appendRankingLog('Ranking error: ' + err.message, 'error');
+      finishRanking();
+    }
+  }
+
+  async function pollRankingStatus() {
+    try {
+      const resp = await fetch('/api/live/clips/rank/status');
+      if (!resp.ok) return;
+      const data = await resp.json();
+
+      // Render new logs
+      const logs = data.logs || [];
+      if (logs.length > lastRankingLogIndex) {
+        for (let i = lastRankingLogIndex; i < logs.length; i++) {
+          const l = logs[i];
+          appendRankingLog(l.message, l.level, l.time);
+        }
+        lastRankingLogIndex = logs.length;
+      }
+
+      if (!data.is_ranking) {
+        if (rankingPollTimer) {
+          clearInterval(rankingPollTimer);
+          rankingPollTimer = null;
+        }
+        finishRanking(data.ranked_clips || []);
+      }
+    } catch (err) {
+      console.debug('Ranking poll error:', err);
+    }
+  }
+
+  function appendRankingLog(msg, level = 'info', timeStr = null) {
+    if (!rankingConsoleBody) return;
+    const line = document.createElement('div');
+    line.className = `console-line ${level}`;
+    const t = timeStr || (new Date()).toTimeString().split(' ')[0];
+    line.innerHTML = `<span class="log-time">[${t}]</span> ${escapeHtml(msg)}`;
+    rankingConsoleBody.appendChild(line);
+    rankingConsoleBody.scrollTop = rankingConsoleBody.scrollHeight;
+  }
+
+  function finishRanking(rankedClips = null) {
+    isRankingActive = false;
+    if (rankingStatusBadge) rankingStatusBadge.textContent = 'Ranking Complete';
+    if (btnRankClipsAi) {
+      btnRankClipsAi.disabled = false;
+      btnRankClipsAi.innerHTML = '<span class="sparkle-icon">✨</span><span>RANK CLIPS AI</span>';
+    }
+    fetchRankedClips(rankedClips);
+  }
+
+  async function fetchRankedClips(preloaded = null) {
+    try {
+      let ranked = preloaded;
+      if (!ranked) {
+        const resp = await fetch('/api/live/clips/ranked');
+        if (resp.ok) {
+          const data = await resp.json();
+          ranked = data.ranked_clips || [];
+        }
+      }
+
+      if (!ranked || ranked.length === 0) {
+        if (rankedClipsSection) rankedClipsSection.style.display = 'none';
+        return;
+      }
+
+      if (rankedClipsSection) rankedClipsSection.style.display = 'block';
+      if (rankedClipsGrid) {
+        rankedClipsGrid.innerHTML = '';
+        ranked.forEach((clip, idx) => {
+          const rankNum = idx + 1;
+          const card = document.createElement('div');
+          const isSelected = selectedRankedClipIds.has(clip.id);
+          card.className = `ranked-clip-card ${isSelected ? 'selected' : ''}`;
+
+          const rankClass = rankNum === 1 ? 'rank-1' : (rankNum === 2 ? 'rank-2' : (rankNum === 3 ? 'rank-3' : ''));
+          const rankLabel = rankNum === 1 ? '👑 #1 BEST' : `#${rankNum}`;
+          const viralScore = (clip.viral_score !== undefined) ? clip.viral_score : 9.0;
+          const hookGrade = clip.hook_grade || 'A';
+          const verdict = clip.ai_verdict || 'High retention potential with engaging speech cadence.';
+
+          card.innerHTML = `
+            <div class="clip-thumb-wrap">
+              <label class="clip-card-checkbox-wrap" title="Select ranked clip">
+                <input type="checkbox" class="ranked-clip-check" data-id="${clip.id}" ${isSelected ? 'checked' : ''}>
+                <span class="custom-check-box"></span>
+              </label>
+              <div class="rank-position-badge ${rankClass}">${rankLabel}</div>
+              <img src="${clip.thumbnail}" alt="" onerror="this.src='/static/icon.png'">
+              <span class="clip-category-tag">${escapeHtml(clip.category || 'Viral Short')}</span>
+              <span class="clip-duration-tag">${clip.duration}s</span>
+            </div>
+            <div class="ranked-metrics-bar">
+              <span class="viral-score-tag">⚡ ${viralScore}/10</span>
+              <span class="hook-grade-tag">Hook: ${escapeHtml(hookGrade)}</span>
+            </div>
+            <div class="ai-verdict-quote">"${escapeHtml(verdict)}"</div>
+            <div class="clip-card-info">
+              <div class="clip-card-title">${escapeHtml(clip.title)}</div>
+              <div class="clip-card-actions">
+                <button type="button" class="primary play-clip-btn">Preview ▶</button>
+                <a href="${clip.vertical_video}" download="${escapeHtml(clip.title)}.mp4" class="ghost">Save ↓</a>
+                <button type="button" class="ghost delete-clip-btn" title="Delete Clip">✕</button>
+              </div>
+            </div>
+          `;
+
+          const chk = card.querySelector('.ranked-clip-check');
+          chk.addEventListener('change', (e) => {
+            e.stopPropagation();
+            if (chk.checked) {
+              selectedRankedClipIds.add(clip.id);
+              card.classList.add('selected');
+            } else {
+              selectedRankedClipIds.delete(clip.id);
+              card.classList.remove('selected');
+            }
+            updateBatchRankedToolbar(ranked.length);
+          });
+
+          card.querySelector('.play-clip-btn').addEventListener('click', () => {
+            openPreviewModal(clip);
+          });
+
+          card.querySelector('.delete-clip-btn').addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (confirm('Delete this ranked clip?')) {
+              await fetch(`/api/live/clips/${clip.id}`, { method: 'DELETE' });
+              selectedRankedClipIds.delete(clip.id);
+              fetchRankedClips();
+              fetchClips();
+            }
+          });
+
+          rankedClipsGrid.appendChild(card);
+        });
+
+        updateBatchRankedToolbar(ranked.length);
+      }
+    } catch (err) {
+      console.debug('Ranked clips error:', err);
+    }
+  }
+
   async function fetchClips() {
     try {
       const resp = await fetch('/api/live/clips');
@@ -887,12 +1273,17 @@
 
       clips.forEach(clip => {
         const card = document.createElement('div');
-        card.className = 'live-clip-card';
+        const isChecked = selectedClipIds.has(clip.id);
+        card.className = `live-clip-card ${isChecked ? 'selected' : ''}`;
         const badges = (clip.badges && clip.badges.length > 0) ? clip.badges : ['✨ Smart Fit', '💬 Auto Captions'];
         const badgesHtml = badges.map(b => `<span class="clip-badge-pill">${escapeHtml(b)}</span>`).join('');
 
         card.innerHTML = `
           <div class="clip-thumb-wrap">
+            <label class="clip-card-checkbox-wrap" title="Select clip">
+              <input type="checkbox" class="clip-select-check" data-id="${clip.id}" ${isChecked ? 'checked' : ''}>
+              <span class="custom-check-box"></span>
+            </label>
             <img src="${clip.thumbnail}" alt="" onerror="this.src='/static/icon.png'">
             <span class="clip-category-tag">${escapeHtml(clip.category || 'Highlight')}</span>
             <span class="clip-duration-tag">${clip.duration}s</span>
@@ -908,6 +1299,19 @@
           </div>
         `;
 
+        const chk = card.querySelector('.clip-select-check');
+        chk.addEventListener('change', (e) => {
+          e.stopPropagation();
+          if (chk.checked) {
+            selectedClipIds.add(clip.id);
+            card.classList.add('selected');
+          } else {
+            selectedClipIds.delete(clip.id);
+            card.classList.remove('selected');
+          }
+          updateBatchClipsToolbar(clips.length);
+        });
+
         card.querySelector('.play-clip-btn').addEventListener('click', () => {
           openPreviewModal(clip);
         });
@@ -916,12 +1320,16 @@
           e.stopPropagation();
           if (confirm('Delete this generated clip?')) {
             await fetch(`/api/live/clips/${clip.id}`, { method: 'DELETE' });
+            selectedClipIds.delete(clip.id);
             fetchClips();
+            fetchRankedClips();
           }
         });
 
         liveClipsGrid.appendChild(card);
       });
+
+      updateBatchClipsToolbar(clips.length);
     } catch (err) {
       console.debug('Clips fetch error:', err);
     }

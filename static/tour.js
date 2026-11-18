@@ -43,8 +43,8 @@
     },
     {
       isFinal: true,
-      title: 'Support Clipify AI ⭐',
-      desc: 'Clipify AI is built 100% free, local, and unrestricted so everyone can create viral Shorts without paying subscriptions. A star on GitHub means the world!'
+      title: 'Support Clipify AI & Follow ⭐',
+      desc: 'Clipify AI is built 100% free, local, and unrestricted so everyone can create viral Shorts without paying subscriptions. Please star the repository and follow @sherlock-dev-ai on GitHub to support free open-source AI!'
     }
   ];
 
@@ -215,10 +215,14 @@
         </div>
         <h3 class="tour-title" style="font-size:1.4rem;margin-bottom:8px;">${step.title}</h3>
         <p class="tour-desc" style="font-size:13.5px;margin-bottom:18px;">${step.desc}</p>
-        <a class="tour-star-btn" href="https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE" target="_blank" rel="noopener noreferrer">
-          <span>⭐ Star on GitHub</span>
-          <span style="font-size:11px;opacity:0.85;">(github.com)</span>
-        </a>
+        <div class="tour-action-row">
+          <a class="tour-star-btn" href="https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE" target="_blank" rel="noopener noreferrer">
+            <span>⭐ Star Repo</span>
+          </a>
+          <a class="tour-follow-btn" href="https://github.com/sherlock-dev-ai" target="_blank" rel="noopener noreferrer">
+            <span>👤 Follow Dev</span>
+          </a>
+        </div>
         <button class="tour-finish-btn" type="button">Let's Clip Some Videos →</button>
       </div>
     `;

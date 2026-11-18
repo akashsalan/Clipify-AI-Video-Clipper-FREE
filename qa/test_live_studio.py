@@ -294,6 +294,50 @@ class TestLiveStudio(unittest.TestCase):
         )
         self.assertIn("boxblur=45:5[bg]", fc_heavy)
 
+    def test_batch_delete_clips(self):
+        from live.studio_manager import LiveStudioManager
+        manager = LiveStudioManager(data_dir=self.root / "live_storage", ffmpeg_bin="ffmpeg", python_bin="python")
+        manager.clips = [
+            {"id": "c1", "title": "Clip 1", "duration": 10.0},
+            {"id": "c2", "title": "Clip 2", "duration": 10.0},
+            {"id": "c3", "title": "Clip 3", "duration": 10.0},
+        ]
+
+        self.assertEqual(len(manager.get_clips()), 3)
+        deleted = manager.delete_clips(["c1", "c3"])
+        self.assertEqual(deleted, 2)
+        remaining = manager.get_clips()
+        self.assertEqual(len(remaining), 1)
+        self.assertEqual(remaining[0]["id"], "c2")
+
+    def test_rank_clips_ai(self):
+        from live.studio_manager import LiveStudioManager
+        manager = LiveStudioManager(data_dir=self.root / "live_storage_rank", ffmpeg_bin="ffmpeg", python_bin="python")
+        manager.clips = [
+            {"id": "c1", "title": "High energy funny moment", "duration": 10.0},
+            {"id": "c2", "title": "Insane reaction clutch", "duration": 10.0},
+            {"id": "c3", "title": "Tutorial introduction", "duration": 10.0},
+        ]
+
+        ranked = manager.rank_clips_ai(top_n=2)
+        self.assertLessEqual(len(ranked), 2)
+        self.assertGreater(len(ranked), 0)
+        self.assertIn("viral_score", ranked[0])
+        self.assertIn("hook_grade", ranked[0])
+        self.assertIn("ai_verdict", ranked[0])
+        # Verify persistence and retrieval
+        stored_ranked = manager.get_ranked_clips()
+        self.assertEqual(len(stored_ranked), len(ranked))
+
+    def test_auto_clip_target_and_status(self):
+        from live.studio_manager import LiveStudioManager
+        manager = LiveStudioManager(data_dir=self.root / "live_storage_target", ffmpeg_bin="ffmpeg", python_bin="python")
+        manager.auto_clip_target = 42
+        manager.auto_clip_interval = 15
+        status = manager.get_status()
+        self.assertEqual(status["auto_clip_target"], 42)
+        self.assertEqual(status["auto_clip_interval"], 15)
+
 
 if __name__ == "__main__":
     unittest.main()

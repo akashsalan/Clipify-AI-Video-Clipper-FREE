@@ -7,7 +7,7 @@
 **100% Free · Private & Local · No Cloud Subscriptions · No Watermarks**
 
 <p align="center">
-  <a href="https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/tag/v3.2.1"><strong>Download v3.2.1 Installer (Windows x64) »</strong></a>
+  <a href="https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/tag/v3.5.4"><strong>Download v3.5.4 Installer (Windows x64) »</strong></a>
   <br>
   <a href="https://ai.projectclipzy.workers.dev/">Project Website</a> ·
   <a href="#-key-features">Key Features</a> ·
@@ -17,8 +17,8 @@
   <a href="#-local-ai-engine">Local AI Setup</a>
 </p>
 
-[![Release](https://img.shields.io/badge/release-v3.2.1-438d72?style=for-the-badge&logo=github)](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/tag/v3.2.1)
-[![Platform](https://img.shields.io/badge/platform-Windows%20x64-243b63?style=for-the-badge&logo=windows)](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/tag/v3.2.1)
+[![Release](https://img.shields.io/badge/release-v3.5.4-438d72?style=for-the-badge&logo=github)](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/tag/v3.5.4)
+[![Platform](https://img.shields.io/badge/platform-Windows%20x64-243b63?style=for-the-badge&logo=windows)](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/tag/v3.5.4)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-6366f1?style=for-the-badge)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-3776ab?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![Ollama](https://img.shields.io/badge/AI%20Engine-Ollama%20%2F%20Qwen-000000?style=for-the-badge&logo=ollama&logoColor=white)](https://ollama.ai)
@@ -35,21 +35,21 @@ Everything runs on your computer—preserving **100% privacy**, with **zero mont
 
 ---
 
-## 📥 Download Windows Installer (v3.2.1)
+## 📥 Download Windows Installer (v3.5.4)
 
 > [!IMPORTANT]
-> The verified release installer is **Clipify AI v3.2.1 for Windows 10/11 (64-bit)**.
+> The verified release installer is **Clipify AI v3.5.4 for Windows 10/11 (64-bit)**.
 >
 > **Note on Windows SmartScreen & Smart App Control**: Clipify AI is 100% open-source, free community software. Because open-source community releases are not signed by expensive commercial EV certificates ($300+/yr), Windows SmartScreen or Windows 11 Smart App Control (SAC) may display a standard unrecognized publisher prompt. Simply click **"More info"** → **"Run anyway"** to install. Uninstallation is cleanly handled via Windows Installed Apps or standard PowerShell commands without unverified stubs.
 
 | Package | Version | Size | Checksum (SHA-256) | Download |
 | :--- | :---: | :---: | :--- | :--- |
-| **`Clipify.AI.Setup.exe`** | `v3.2.1` | **319.4 MB** | `77B313493410639B7E4A03730453A74EB8E85678D7D3E10F16C750B57F3ECC28` | [**Download from GitHub**](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.2.1/Clipify.AI.Setup.exe) |
+| **`Clipify.AI.Setup.exe`** | `v3.5.4` | **319.4 MB** | `2A1856080A8441A0019C6BE477903A51DB8B9E337918218D97C0EEE75255B848` | [**Download from GitHub**](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.5.4/Clipify.AI.Setup.exe) |
 
 #### Verify installer integrity in PowerShell:
 ```powershell
 Get-FileHash ".\Clipify.AI.Setup.exe" -Algorithm SHA256
-# Compare output with: 77B313493410639B7E4A03730453A74EB8E85678D7D3E10F16C750B57F3ECC28
+# Compare output with: 2A1856080A8441A0019C6BE477903A51DB8B9E337918218D97C0EEE75255B848
 ```
 
 ---
@@ -113,7 +113,7 @@ Get-FileHash ".\Clipify.AI.Setup.exe" -Algorithm SHA256
 
 ## 🥊 Clipper vs Competitors
 
-| Feature | OpusClip | Munch / Submagic | Clipify AI (v3.2.1) |
+| Feature | OpusClip | Munch / Submagic | Clipify AI (v3.5.4) |
 | :--- | :---: | :---: | :---: |
 | **Pricing** | $19 – $49/mo | $20 – $50/mo | **100% Free & Open-Source** |
 | **Video Processing** | Cloud (Queues / Limits) | Cloud (Usage Quotas) | **100% Local (Private & Unlimited)** |

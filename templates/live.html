@@ -303,6 +303,17 @@
             </select>
           </div>
 
+          <div class="pref-row auto-clip-target-row" id="autoClipTargetRow">
+            <div>
+              <b>Auto-Clip Target Limit (1 - 100)</b>
+              <small>Total clips to generate automatically before pausing</small>
+            </div>
+            <div class="target-input-group">
+              <input type="number" id="autoClipTargetInput" class="compact-number-input" min="1" max="100" value="10">
+              <span class="target-unit-tag">clips</span>
+            </div>
+          </div>
+
           <div class="pref-row-col">
             <div class="slider-header">
               <label for="sensitivitySlider">Highlight Sensitivity</label>
@@ -507,7 +518,44 @@
             <span class="kicker">EXPORT READY</span>
             <h2>Live Clips (<span id="clipsCount">0</span>)</h2>
           </div>
-          <button class="ghost mini-btn" id="btnRefreshClips" type="button">↻ Refresh</button>
+          <div class="gallery-head-actions">
+            <button class="primary rank-ai-btn" id="btnRankClipsAi" type="button" title="Use Ollama AI to evaluate viral hooks and rank the top 10 clips">
+              <span class="sparkle-icon">✨</span>
+              <span>RANK CLIPS AI</span>
+            </button>
+            <button class="ghost mini-btn" id="btnRefreshClips" type="button">↻ Refresh</button>
+          </div>
+        </div>
+
+        <!-- Clips Batch Selection & Management Toolbar -->
+        <div class="clips-batch-toolbar" id="clipsBatchToolbar">
+          <div class="batch-left">
+            <label class="select-all-label">
+              <input type="checkbox" id="chkSelectAllClips">
+              <span>Select All</span>
+            </label>
+            <span class="selected-counter" id="selectedClipsCounter">0 selected</span>
+          </div>
+          <div class="batch-right">
+            <button type="button" class="danger-btn mini-btn" id="btnDeleteSelectedClips" disabled>
+              <span>🗑️ Delete Selected</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- AI Clip Ranking Live Process Console -->
+        <div class="ranking-console-panel" id="rankingConsolePanel" style="display:none;">
+          <div class="ranking-console-header">
+            <div class="console-title-wrap">
+              <span class="ranking-pulse-dot"></span>
+              <b>AI CLIP RANKING CONSOLE (Ollama Qwen)</b>
+              <span class="status-chip ranking-status-chip" id="rankingStatusBadge">Analyzing...</span>
+            </div>
+            <button type="button" class="console-clear-btn" id="btnCloseRankingConsole">Close</button>
+          </div>
+          <div class="ranking-console-body" id="rankingConsoleBody">
+            <div class="console-line system"><span class="log-time">[AI RANK]</span> Initializing neural viral potential analysis...</div>
+          </div>
         </div>
 
         <div class="live-clips-grid" id="liveClipsGrid">
@@ -523,6 +571,32 @@
             </div>
             <b>No clips generated yet</b>
             <p>Clips will appear here automatically as highlights are detected, or click <b>Instant Clip</b> anytime.</p>
+          </div>
+        </div>
+
+        <!-- DEDICATED AI TOP RANKED HIGHLIGHTS BOX -->
+        <div class="ranked-clips-section" id="rankedClipsSection" style="display:none;">
+          <div class="ranked-section-header">
+            <div>
+              <div class="ranked-header-badge">
+                <span class="trophy-icon">🏆</span>
+                <span>AI TOP RANKED HIGHLIGHTS (TOP 10)</span>
+              </div>
+              <p class="ranked-header-sub">Ollama AI predicted virality, hook retention score & dynamic ranking</p>
+            </div>
+            <div class="ranked-batch-actions">
+              <label class="select-all-label">
+                <input type="checkbox" id="chkSelectAllRanked">
+                <span>Select All Ranked</span>
+              </label>
+              <button type="button" class="danger-btn mini-btn" id="btnDeleteSelectedRanked" disabled>
+                <span>🗑️ Delete Selected</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="ranked-clips-grid" id="rankedClipsGrid">
+            <!-- Dynamically populated ranked clips cards -->
           </div>
         </div>
       </section>
