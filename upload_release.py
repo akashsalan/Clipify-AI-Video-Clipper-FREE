@@ -8,11 +8,15 @@ import urllib.error
 
 REPO = "sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE"
 TAG = "v3.2.1"
-RELEASE_NAME = "Clipify AI v3.2.1"
+RELEASE_NAME = "Clipify AI v3.2.1: LIVE Stream Clipping & Studio Release"
 ASSET_NAME = "Clipify.AI.Setup.exe"
 FILE_PATH = r"L:\ClipifyAI\Clipify.AI.Setup.exe"
 
-RELEASE_NOTES = """## Clipify AI v3.2.1: LIVE Stream Clipping & Studio Release
+RELEASE_NOTES = """<p align="center">
+  <img src="https://raw.githubusercontent.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/main/docs/screenshots/live_studio_clips.jpg" alt="Clipify AI Live Stream Clipping Studio — Export Ready Live Shorts" width="100%">
+</p>
+
+## Clipify AI v3.2.1: LIVE Stream Clipping & Studio Release
 
 ### 🚀 What's New in v3.2.1
 
@@ -55,8 +59,15 @@ RELEASE_NOTES = """## Clipify AI v3.2.1: LIVE Stream Clipping & Studio Release
    - All 117 QA unit tests passing.
    - Zero regressions across Create, Narrate, Ollama models, and PyTorch pipelines.
 
-### 📦 Download & Install
-Download **`Clipify.AI.Setup.exe`** below to install Clipify AI v3.2.1.
+---
+
+### 📥 Download & Verification
+
+| Package | Version | Size | Checksum (SHA-256) |
+| :--- | :---: | :---: | :--- |
+| **`Clipify.AI.Setup.exe`** | `v3.2.1` | **319.4 MB** | `4BE83637655B11FE76E92CD31FE50F5E66C70C08E7406EE007F7BB8387FA29A3` |
+
+> **Note on Windows SmartScreen & Smart App Control**: Clipify AI is 100% open-source, free community software. Because open-source community releases are not signed by expensive commercial EV certificates ($300+/yr), Windows SmartScreen or Windows 11 Smart App Control (SAC) may display a standard unrecognized publisher prompt. Simply click **"More info"** → **"Run anyway"** to install.
 """
 
 def get_token():
@@ -93,8 +104,23 @@ def main():
         else:
             raise
 
-    # 2. Create release if not found
-    if not release:
+    # 2. Update release if exists, or create if not found
+    if release:
+        print(f"Updating release {TAG} metadata on GitHub...")
+        patch_payload = {
+            "name": RELEASE_NAME,
+            "body": RELEASE_NOTES,
+        }
+        patch_req = urllib.request.Request(
+            f"https://api.github.com/repos/{REPO}/releases/{release['id']}",
+            data=json.dumps(patch_payload).encode("utf-8"),
+            headers={**headers, "Content-Type": "application/json"},
+            method="PATCH"
+        )
+        with urllib.request.urlopen(patch_req) as resp:
+            release = json.loads(resp.read().decode())
+            print(f"Successfully updated release {TAG} name and body on GitHub!")
+    else:
         payload = {
             "tag_name": TAG,
             "target_commitish": "main",
@@ -116,7 +142,14 @@ def main():
     base_upload_url = upload_url_template.split("{")[0]
 
     file_size = os.path.getsize(FILE_PATH)
-    print(f"Preparing to upload {FILE_PATH} ({file_size / (1024*1024):.2f} MB) as {ASSET_NAME}...")
+    print(f"Checking {FILE_PATH} ({file_size / (1024*1024):.2f} MB) against GitHub asset {ASSET_NAME}...")
+
+    # Check if identical asset already exists
+    for a in release.get("assets", []):
+        if a["name"] == ASSET_NAME and a.get("size") == file_size:
+            print(f"SUCCESS: Asset {ASSET_NAME} already exists with exact size ({file_size} bytes).")
+            print(f"Asset URL: {a.get('browser_download_url')}")
+            return
 
     # Upload with retries
     for attempt in range(1, 6):
