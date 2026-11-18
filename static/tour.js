@@ -8,37 +8,43 @@
     {
       target: '#dropzone',
       title: '1. Create & Import',
-      desc: 'Drop your video file here or paste a YouTube link. Clipify AI automatically fetches footage and prepares it for processing.',
+      desc: 'Drop your long-form video file or paste a YouTube link. Clipify AI prepares footage instantly for AI-powered clipping.',
       pos: 'bottom'
     },
     {
       target: '.mode-strip',
       title: '2. Smart AI Modes & Split Screen',
-      desc: 'Pick your editing style (Viral Hooks, Flow, Highlights, Gaming). Enable Split-Screen for podcasts to frame one speaker on top and the other at the bottom.',
+      desc: 'Pick your editing style (Viral Hooks, Flow, Highlights, Gaming). Enable Split-Screen for podcast framing with two face tracking panels.',
       pos: 'bottom'
     },
     {
       target: 'a[href="/narrate"]',
       title: '3. Voice & Narrate Studio',
-      desc: 'Generate voiceovers and narrated AI stories using high-quality local offline text-to-speech models.',
+      desc: 'Generate voiceovers and narrated AI stories using high-quality local offline text-to-speech models with 0 subscription fees.',
+      pos: 'right'
+    },
+    {
+      target: 'a[href="/live"]',
+      title: '4. Live Studio (Brand New!)',
+      desc: 'Connect live streams from YouTube Live, TikTok Live, or OBS Studio. Clipify AI transcribes speech in real time and automatically creates viral 9:16 Shorts while the stream is still running!',
       pos: 'right'
     },
     {
       target: 'a[data-nav="projects"]',
-      title: '4. Workspace & Saved Projects',
+      title: '5. Workspace & Saved Projects',
       desc: 'All generated Shorts, clips, transcripts and assets are saved locally. Review, download, or re-edit them anytime.',
       pos: 'right'
     },
     {
       target: 'a[data-nav="editor"]',
-      title: '5. Editor & Social MCP',
-      desc: 'Customize subtitles, add logo watermarks, and publish your finished Shorts directly to YouTube, TikTok and Instagram.',
+      title: '6. Editor & Social MCP',
+      desc: 'Customize subtitles, add logo watermarks, and export or publish your finished Shorts directly.',
       pos: 'right'
     },
     {
       isFinal: true,
       title: 'Support Clipify AI ⭐',
-      desc: 'I built Clipify AI completely free, local, and unrestricted so everyone can create viral Shorts without paying subscriptions. A star on GitHub means the world and helps keep updates coming!'
+      desc: 'Clipify AI is built 100% free, local, and unrestricted so everyone can create viral Shorts without paying subscriptions. A star on GitHub means the world!'
     }
   ];
 

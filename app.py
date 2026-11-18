@@ -1100,6 +1100,107 @@ def narrate_page():
     return render_template("narrate.html")
 
 
+@app.get("/live")
+def live_studio_page():
+    return render_template("live.html")
+
+
+def _get_live_studio_mgr():
+    from live import get_live_manager
+    python_bin = sys.executable
+    try:
+        pipeline_cmd = _pipeline_command(USER_DATA_DIR)
+        if pipeline_cmd:
+            python_bin = pipeline_cmd[0]
+    except Exception:
+        pass
+    return get_live_manager(
+        data_dir=USER_DATA_DIR,
+        ffmpeg_bin=_ffmpeg_path(),
+        python_bin=python_bin,
+    )
+
+
+@app.get("/api/live/status")
+def live_status():
+    mgr = _get_live_studio_mgr()
+    return jsonify(mgr.get_status())
+
+
+@app.post("/api/live/connect")
+def live_connect():
+    data = request.get_json(silent=True) or {}
+    source_type = data.get("source_type", "youtube")
+    source_url = data.get("source_url", "")
+    auto_clip = bool(data.get("auto_clip", True))
+    sensitivity = int(data.get("sensitivity", 5))
+    buffer_minutes = int(data.get("buffer_minutes", 10))
+    model_name = str(data.get("model_name", "qwen2.5:3b"))
+
+    mgr = _get_live_studio_mgr()
+    ok, msg = mgr.start_session(
+        source_type=source_type,
+        source_url=source_url,
+        auto_clip=auto_clip,
+        sensitivity=sensitivity,
+        buffer_minutes=buffer_minutes,
+        model_name=model_name,
+    )
+    if not ok:
+        return jsonify({"error": msg}), 400
+    return jsonify({"success": True, "message": msg, "status": mgr.get_status()})
+
+
+@app.post("/api/live/disconnect")
+def live_disconnect():
+    mgr = _get_live_studio_mgr()
+    mgr.stop_session()
+    return jsonify({"success": True, "status": mgr.get_status()})
+
+
+@app.get("/api/live/clips")
+def live_clips():
+    mgr = _get_live_studio_mgr()
+    return jsonify({"clips": mgr.get_clips()})
+
+
+@app.post("/api/live/instant-clip")
+def live_instant_clip():
+    data = request.get_json(silent=True) or {}
+    duration = int(data.get("duration", 30))
+    mgr = _get_live_studio_mgr()
+    clip = mgr.instant_clip(duration_sec=duration)
+    if not clip:
+        return jsonify({"error": "Failed generating instant clip. Ensure the stream is actively recording."}), 400
+    return jsonify({"success": True, "clip": clip})
+
+
+@app.delete("/api/live/clips/<clip_id>")
+def live_delete_clip(clip_id: str):
+    mgr = _get_live_studio_mgr()
+    ok = mgr.delete_clip(clip_id)
+    return jsonify({"success": ok})
+
+
+@app.get("/api/live/transcript")
+def live_transcript():
+    mgr = _get_live_studio_mgr()
+    return jsonify({"segments": mgr.get_recent_transcripts()})
+
+
+@app.get("/api/live/obs-config")
+def live_obs_config():
+    mgr = _get_live_studio_mgr()
+    return jsonify(mgr.get_obs_config())
+
+
+@app.get("/api/live/media/<path:filename>")
+def live_media(filename: str):
+    mgr = _get_live_studio_mgr()
+    clips_dir = mgr.clips_dir
+    return send_from_directory(str(clips_dir), filename)
+
+
 @app.get("/api/narrate/videos")
 def narrate_videos():
     videos = NARRATE.scan_videos()

@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import urllib.request
@@ -98,28 +99,102 @@ def check(dest: Path) -> dict:
     return result
 
 
+def _is_compatible_python(python: Path) -> bool:
+    if not python.is_file():
+        return False
+    try:
+        probe = subprocess.run(
+            [str(python), "-c", "import sys,struct;print('%d.%d|%s' % (sys.version_info[0], sys.version_info[1], struct.calcsize('P')*8))"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if probe.returncode != 0:
+            return False
+        version, bits = probe.stdout.strip().split("|")
+        major, minor = (int(x) for x in version.split("."))
+        return (major, minor) == REQUIRED_PYTHON and bits == "64"
+    except Exception:
+        return False
+
+
+def _download_and_extract_python() -> Path:
+    """Auto-install portable CPython 3.11 64-bit when missing from system."""
+    import zipfile
+    dest_dir = PROJECT_ROOT / "build" / "python311"
+    target_exe = dest_dir / "python.exe"
+    if _is_compatible_python(target_exe):
+        return target_exe
+
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    url = "https://www.nuget.org/api/v2/package/python/3.11.9"
+    zip_path = dest_dir / "python311.zip"
+    print(f"[runtime] No compatible Python 3.11 64-bit found. Downloading portable Python 3.11.9...")
+    
+    headers = {"User-Agent": "Mozilla/5.0 ClipifyAI/3.1.0"}
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req) as resp, open(zip_path, "wb") as out:
+        total = int(resp.headers.get("Content-Length", 0))
+        downloaded = 0
+        while chunk := resp.read(65536):
+            downloaded += len(chunk)
+            out.write(chunk)
+            if total > 0:
+                percent = int(downloaded * 100 / total)
+                print(f"\r[runtime] Downloading Python 3.11: {percent}% ({downloaded / 1048576:.1f} MB)", end="")
+    print("\n[runtime] Extracting portable Python runtime...")
+    with zipfile.ZipFile(zip_path, "r") as z:
+        for member in z.namelist():
+            if member.startswith("tools/"):
+                rel = member[len("tools/"):]
+                if not rel:
+                    continue
+                target = dest_dir / rel
+                if member.endswith("/"):
+                    target.mkdir(parents=True, exist_ok=True)
+                else:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    with z.open(member) as src, open(target, "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+    try:
+        zip_path.unlink()
+    except OSError:
+        pass
+    if _is_compatible_python(target_exe):
+        print(f"[runtime] Portable Python 3.11 ready at {target_exe}")
+        return target_exe
+    raise SystemExit(f"[runtime] Auto-installed Python at {target_exe} failed verification.")
+
+
 def base_python() -> Path:
     """Interpreter used to create the runtime virtualenv."""
     override = os.environ.get("CLIPPEDAI_RUNTIME_BASE_PYTHON", "").strip()
-    if override:
+    if override and _is_compatible_python(Path(override)):
         return Path(override)
-    return Path(sys.base_prefix) / "python.exe"
+    
+    curr = Path(sys.base_prefix) / "python.exe"
+    if _is_compatible_python(curr):
+        return curr
+
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
+    candidates = [
+        PROJECT_ROOT / "build" / "python311" / "python.exe",
+        Path(local_app_data) / "Programs" / "ClipifyAI" / "python311" / "python.exe",
+        Path(local_app_data) / "Programs" / "Python" / "Python311" / "python.exe",
+        Path(r"C:\Program Files\Python311\python.exe"),
+        Path(r"C:\Python311\python.exe"),
+    ]
+    for c in candidates:
+        if _is_compatible_python(c):
+            return c
+
+    # Attempt auto-installation of portable Python 3.11
+    return _download_and_extract_python()
 
 
 def verify_base_python(python: Path) -> None:
-    probe = subprocess.run(
-        [str(python), "-c",
-         "import sys,struct;print('%d.%d|%s' % (sys.version_info[0], sys.version_info[1], struct.calcsize('P')*8))"],
-        capture_output=True, text=True,
-    )
-    if probe.returncode != 0:
-        raise SystemExit(f"[runtime] Base interpreter is not usable: {python}")
-    version, bits = probe.stdout.strip().split("|")
-    major, minor = (int(x) for x in version.split("."))
-    if (major, minor) != REQUIRED_PYTHON or bits != "64":
+    if not _is_compatible_python(python):
         raise SystemExit(
             f"[runtime] The Clipify AI ML runtime must be CPython "
-            f"{REQUIRED_PYTHON[0]}.{REQUIRED_PYTHON[1]} 64-bit; {python} is {version} ({bits}-bit).\n"
+            f"{REQUIRED_PYTHON[0]}.{REQUIRED_PYTHON[1]} 64-bit; {python} is invalid.\n"
             f"          Install CPython {REQUIRED_PYTHON[0]}.{REQUIRED_PYTHON[1]} x64, or point\n"
             f"          CLIPPEDAI_RUNTIME_BASE_PYTHON at a matching interpreter."
         )
