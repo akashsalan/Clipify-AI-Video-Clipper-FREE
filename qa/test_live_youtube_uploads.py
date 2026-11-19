@@ -2,9 +2,11 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
+from urllib.error import HTTPError
 from urllib.parse import parse_qs
 
 from live.clip_generator import LiveClipGenerator
@@ -64,7 +66,7 @@ class LiveYouTubeUploadsTests(unittest.TestCase):
                 restarted._drain()
                 publish.assert_called_once_with(
                     str(clips_dir / "clip1" / "short_9_16.mp4"),
-                    "A highlight", privacy="private", require_refresh=True,
+                    "A highlight", privacy="private", require_refresh=True, session_url=None, save_session=ANY,
                 )
 
     def test_failed_and_interrupted_uploads_are_not_reposted(self):
@@ -83,6 +85,34 @@ class LiveYouTubeUploadsTests(unittest.TestCase):
                 uploads._drain()
                 self.assertEqual(publish.call_count, 1)
                 self.assertEqual(publish.call_args.args[1], "Failed")
+
+    def test_worker_resumes_the_saved_session_and_clears_it_after_success(self):
+        url = "https://www.googleapis.com/upload/youtube/v3/videos?upload_id=durable"
+
+        def interrupted(*args, save_session, **kwargs):
+            save_session(url)
+            raise RuntimeError("simulated process exit after saving the session")
+
+        with tempfile.TemporaryDirectory() as directory, patch("live.youtube_uploads.threading.Thread"):
+            clips_dir = Path(directory) / "clips"
+            first = LiveYouTubeUploads(clips_dir, "private", Mock())
+            first.enqueue("clip1", "A highlight")
+            with patch("live.youtube_uploads.publish_youtube_short", side_effect=interrupted):
+                with self.assertRaisesRegex(RuntimeError, "simulated process exit"):
+                    first._drain()
+
+            restarted = LiveYouTubeUploads(clips_dir, "private", Mock())
+            with patch("live.youtube_uploads.publish_youtube_short", return_value={
+                "status": "published", "video_id": "abc", "url": "https://www.youtube.com/shorts/abc",
+            }) as publish:
+                with first._worker_lock() as acquired:
+                    self.assertTrue(acquired)
+                    restarted._drain()
+                    publish.assert_not_called()
+                restarted._drain()
+                self.assertEqual(publish.call_args.kwargs["session_url"], url)
+            with closing(sqlite3.connect(restarted.database)) as db:
+                self.assertEqual(db.execute("SELECT state, session_url FROM uploads").fetchone(), ("uploaded", None))
 
 
 class YouTubeOAuthTests(unittest.TestCase):
@@ -110,6 +140,54 @@ class YouTubeOAuthTests(unittest.TestCase):
             self.assertEqual(json.loads(init.data)["status"]["privacyStatus"], "private")
             self.assertEqual(upload.get_method(), "PUT")
             self.assertEqual(upload.get_header("Authorization"), "Bearer fresh-token")
+
+    def test_network_failure_resumes_at_the_server_offset(self):
+        url = "https://www.googleapis.com/upload/youtube/v3/videos?upload_id=partial"
+        init = BytesIO()
+        init.headers = {"Location": url}
+        incomplete = HTTPError(url, 308, "Resume Incomplete", {"Range": "bytes=0-1"}, BytesIO())
+        with tempfile.TemporaryDirectory() as directory:
+            video = Path(directory) / "clip.mp4"
+            video.write_bytes(b"short")
+            sent = []
+            responses = iter([init, TimeoutError(), incomplete, BytesIO(b'{"id": "abc"}')])
+
+            def server(request, timeout):
+                body = request.data if isinstance(request.data, bytes) else request.data.read()
+                sent.append((request.get_method(), request.get_header("Content-range"), body))
+                response = next(responses)
+                if isinstance(response, Exception):
+                    raise response
+                return response
+
+            with patch("tools.mcp_publish.load_credentials", return_value={"youtube": {"access_token": "token"}}), patch(
+                "tools.mcp_publish.urllib.request.urlopen", side_effect=server,
+            ), patch("tools.mcp_publish.time.sleep"):
+                saved = Mock()
+                result = publish_youtube_short(str(video), "Highlight", save_session=saved)
+            self.assertEqual(result["video_id"], "abc")
+            saved.assert_called_once_with(url)
+            self.assertEqual(sent[1:], [
+                ("PUT", None, b"short"),
+                ("PUT", "bytes */5", b""),
+                ("PUT", "bytes 2-4/5", b"ort"),
+            ])
+
+    def test_saved_session_recovers_a_lost_success_response_without_resending(self):
+        with tempfile.TemporaryDirectory() as directory:
+            video = Path(directory) / "clip.mp4"
+            video.write_bytes(b"short")
+            url = "https://www.googleapis.com/upload/youtube/v3/videos?upload_id=complete"
+            with patch("tools.mcp_publish.load_credentials", return_value={"youtube": {"access_token": "token"}}), patch(
+                "tools.mcp_publish.urllib.request.urlopen", return_value=BytesIO(b'{"id": "already-uploaded"}'),
+            ) as open_url:
+                result = publish_youtube_short(str(video), "Highlight", session_url=url)
+            self.assertEqual(result["video_id"], "already-uploaded")
+            open_url.assert_called_once()
+            request = open_url.call_args.args[0]
+            self.assertEqual(request.full_url, url)
+            self.assertEqual(request.get_header("Content-range"), "bytes */5")
+            self.assertEqual(request.data, b"")
 
     def test_auto_upload_requires_refresh_credentials(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -189,7 +189,7 @@ This fork adds an opt-in uploader for new Live Studio Shorts. It queues the vert
 3. Set `CLIPIFY_LIVE_YOUTUBE_AUTO_UPLOAD=1` in Clipify's local `.env`. Set `CLIPIFY_LIVE_YOUTUBE_PRIVACY` to `private` (the default), `unlisted`, or `public`.
 4. Restart Clipify, open Live Studio, and connect a stream. Watch the Live Studio console for upload results and verify the first private upload in YouTube Studio.
 
-OAuth credentials are saved in the git-ignored `settings/social_credentials.json`. Keep the client JSON and this file private. Clips created before enabling the uploader stay local. Queued clips that have not started uploading resume when you reopen Live Studio. If an upload fails or Clipify closes during an upload, check YouTube Studio before manually uploading the saved MP4.
+OAuth credentials are saved in the git-ignored `settings/social_credentials.json`. Keep the client JSON and this file private. Clips created before enabling the uploader stay local. Queued clips and in-progress upload sessions resume when you reopen Live Studio. Clipify checks the saved YouTube session before sending more video. If YouTube has expired the session or an upload was interrupted on an older build, check YouTube Studio before manually uploading the saved MP4.
 
 ## 🧠 Local AI Engine
 
