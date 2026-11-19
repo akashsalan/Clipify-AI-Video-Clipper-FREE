@@ -174,6 +174,23 @@ The web studio will launch automatically in your browser at `http://127.0.0.1:50
 
 ---
 
+## Automatic YouTube uploads from Live Studio
+
+This fork adds an opt-in uploader for new Live Studio Shorts. It queues the vertical MP4 as soon as rendering finishes, including clips created by the timer and through the Instant or Batch controls.
+
+1. Run this fork from source. In Google Cloud, enable **YouTube Data API v3** and create a **Desktop app** OAuth client. Save its JSON outside the repository.
+2. In your Clipify Python environment, run these commands and select the Google account and YouTube channel you want to upload to.
+
+   ```powershell
+   python -m pip install google-auth-oauthlib
+   python -m tools.connect_youtube "C:\path\to\client_secret.json"
+   ```
+
+3. Set `CLIPIFY_LIVE_YOUTUBE_AUTO_UPLOAD=1` in Clipify's local `.env`. Set `CLIPIFY_LIVE_YOUTUBE_PRIVACY` to `private` (the default), `unlisted`, or `public`.
+4. Restart Clipify, open Live Studio, and connect a stream. Watch the Live Studio console for upload results and verify the first private upload in YouTube Studio.
+
+OAuth credentials are saved in the git-ignored `settings/social_credentials.json`. Keep the client JSON and this file private. Clips created before enabling the uploader stay local. Queued clips that have not started uploading resume when you reopen Live Studio. If an upload fails or Clipify closes during an upload, check YouTube Studio before manually uploading the saved MP4.
+
 ## 🧠 Local AI Engine
 
 Clipify AI is built on local privacy. It connects seamlessly to a local [Ollama](https://ollama.ai) daemon running on `http://127.0.0.1:11434`.

@@ -13,7 +13,7 @@ import subprocess
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from live.rolling_buffer import RollingBuffer
 from live.smart_editor import SmartEditor
@@ -33,12 +33,14 @@ class LiveClipGenerator:
         ffmpeg_bin: str,
         rolling_buffer: RollingBuffer,
         clips_output_dir: Path,
+        on_short_ready: Optional[Callable[[str, str], None]] = None,
     ):
         self.ffmpeg_bin = ffmpeg_bin
         self.rolling_buffer = rolling_buffer
         self.clips_output_dir = Path(clips_output_dir)
         self.clips_output_dir.mkdir(parents=True, exist_ok=True)
         self.smart_editor = SmartEditor(ffmpeg_bin)
+        self.on_short_ready = on_short_ready
 
     def render_clip(
         self,
@@ -141,5 +143,12 @@ class LiveClipGenerator:
         # Save metadata JSON
         meta_file = clip_dir / "meta.json"
         meta_file.write_text(json.dumps(clip_record, indent=2), encoding="utf-8")
+
+        if self.on_short_ready:
+            try:
+                if out_vertical.is_file() and out_vertical.stat().st_size >= 1000:
+                    self.on_short_ready(clip_id, title)
+            except Exception:
+                logger.exception("Could not queue YouTube upload for clip %s", clip_id)
 
         return clip_record

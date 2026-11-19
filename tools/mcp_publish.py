@@ -88,8 +88,25 @@ def list_social_accounts() -> Dict[str, Any]:
     }
 
 
+def _refresh_youtube_token(creds: Dict[str, Any]) -> str:
+    required = ("client_id", "client_secret", "refresh_token")
+    if not all(creds.get(key) for key in required):
+        raise ValueError("Connect YouTube with python -m tools.connect_youtube first.")
+    request = urllib.request.Request(
+        "https://oauth2.googleapis.com/token",
+        data=urllib.parse.urlencode({
+            **{key: creds[key] for key in required},
+            "grant_type": "refresh_token",
+        }).encode("ascii"),
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.load(response)["access_token"]
+
+
 def publish_youtube_short(video_path: str, title: str, description: str = "",
-                          tags: Optional[List[str]] = None, privacy: str = "public") -> Dict[str, Any]:
+                          tags: Optional[List[str]] = None, privacy: str = "public",
+                          *, require_refresh: bool = False) -> Dict[str, Any]:
     """Upload a generated vertical Short to YouTube via YouTube Data API v3."""
     v_path = Path(video_path)
     if not v_path.is_file():
@@ -97,6 +114,13 @@ def publish_youtube_short(video_path: str, title: str, description: str = "",
 
     creds = load_credentials().get("youtube", {})
     token = creds.get("access_token") or os.getenv("YOUTUBE_ACCESS_TOKEN")
+    if require_refresh or (not token and creds.get("refresh_token")):
+        try:
+            token = _refresh_youtube_token(creds)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        except (OSError, KeyError):
+            return {"ok": False, "error": "YouTube authorization refresh failed. Check the connection or reconnect YouTube."}
 
     if not token:
         # Generate upload helper and direct YouTube studio link when direct token isn't stored
@@ -146,20 +170,27 @@ def publish_youtube_short(video_path: str, title: str, description: str = "",
         with urllib.request.urlopen(req, timeout=30) as resp:
             upload_url = resp.headers.get("Location")
 
-        if not upload_url:
-            return {"ok": False, "error": "Failed to initiate YouTube resumable upload."}
+        session_url = urllib.parse.urlsplit(upload_url or "")
+        if session_url.scheme != "https" or session_url.hostname != "www.googleapis.com":
+            return {"ok": False, "error": "YouTube did not return a valid resumable upload URL."}
 
         # Upload binary stream
         with open(v_path, "rb") as f:
             upload_req = urllib.request.Request(
                 upload_url,
                 data=f,
-                headers={"Content-Type": "video/mp4", "Content-Length": str(v_path.stat().st_size)},
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "video/mp4",
+                    "Content-Length": str(v_path.stat().st_size),
+                },
                 method="PUT"
             )
             with urllib.request.urlopen(upload_req, timeout=600) as upload_resp:
                 res_data = json.loads(upload_resp.read().decode("utf-8"))
-                video_id = res_data.get("id", "")
+                video_id = res_data.get("id")
+                if not video_id:
+                    return {"ok": False, "error": "YouTube did not return a video ID. Check YouTube Studio before re-uploading."}
                 return {
                     "ok": True,
                     "platform": "youtube",

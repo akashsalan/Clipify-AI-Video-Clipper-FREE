@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import shutil
+import sqlite3
 import threading
 import time
 import urllib.request
@@ -23,6 +24,7 @@ from live.highlight_detector import HighlightDetector, HighlightCandidate
 from live.rolling_buffer import RollingBuffer
 from live.stream_connector import StreamConnector
 from live.transcriber import LiveTranscriber, LiveTranscriptSegment
+from live.youtube_uploads import LiveYouTubeUploads
 
 logger = logging.getLogger("clipify.live.manager")
 
@@ -90,6 +92,18 @@ class LiveStudioManager:
         self._lock = threading.RLock()
         self._load_saved_clips()
         self.log_activity("Live Studio manager initialized. System ready.", "system")
+        self.youtube_uploads = None
+        if os.getenv("CLIPIFY_LIVE_YOUTUBE_AUTO_UPLOAD", "").strip() == "1":
+            privacy = os.getenv("CLIPIFY_LIVE_YOUTUBE_PRIVACY", "private").strip().lower()
+            if privacy in {"private", "unlisted", "public"}:
+                try:
+                    self.youtube_uploads = LiveYouTubeUploads(self.clips_dir, privacy, self.log_activity)
+                    self.log_activity(f"YouTube auto-upload enabled ({privacy}).", "info")
+                except (OSError, sqlite3.Error):
+                    logger.exception("Could not initialize Live Studio YouTube uploads")
+                    self.log_activity("Could not initialize the YouTube upload queue. Check the app log.", "error")
+            else:
+                self.log_activity("Invalid YouTube upload privacy. Use private, unlisted, or public.", "error")
 
     def log_activity(self, message: str, level: str = "info") -> None:
         """Record real-time activity for the Live Studio console."""
@@ -211,6 +225,7 @@ class LiveStudioManager:
                 ffmpeg_bin=self.ffmpeg_bin,
                 rolling_buffer=self.buffer,
                 clips_output_dir=self.clips_dir,
+                on_short_ready=self.youtube_uploads.enqueue if self.youtube_uploads else None,
             )
 
             self.detector = HighlightDetector(
