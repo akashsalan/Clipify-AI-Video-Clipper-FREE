@@ -146,12 +146,13 @@ Get-FileHash ".\Clipify.AI.Setup.3.7.0.exe" -Algorithm SHA256
 - Windows 10/11 (64-bit)
 - Python 3.11+
 - [Git](https://git-scm.com/)
+- [FFmpeg](https://ffmpeg.org/download.html) on PATH (check with `ffmpeg -version`)
 - [Ollama](https://ollama.ai/) (optional for LLM highlight scoring)
 - NVIDIA GPU with CUDA recommended (CPU supported)
 
 ```powershell
 # 1. Clone the repository
-git clone https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE.git
+git clone --branch live-youtube-auto-upload https://github.com/akashsalan/Clipify-AI-Video-Clipper-FREE.git
 cd Clipify-AI-Video-Clipper-FREE
 
 # 2. Create and activate a Python 3.11 virtual environment
@@ -178,7 +179,7 @@ The web studio will launch automatically in your browser at `http://127.0.0.1:50
 
 This fork adds an opt-in uploader for new Live Studio Shorts. It queues the vertical MP4 as soon as rendering finishes, including clips created by the timer and through the Instant or Batch controls.
 
-1. Run this fork from source. In Google Cloud, enable **YouTube Data API v3** and create a **Desktop app** OAuth client. Save its JSON outside the repository.
+1. Run this fork from source. In Google Cloud, enable **YouTube Data API v3**, configure the OAuth consent screen, and create a **Desktop app** OAuth client. If the app is external and in Testing, add your Google account as a test user. Download the client JSON and save it outside the repository.
 2. In your Clipify Python environment, run these commands and select the Google account and YouTube channel you want to upload to.
 
    ```powershell
@@ -186,8 +187,8 @@ This fork adds an opt-in uploader for new Live Studio Shorts. It queues the vert
    python -m tools.connect_youtube "C:\path\to\client_secret.json"
    ```
 
-3. Set `CLIPIFY_LIVE_YOUTUBE_AUTO_UPLOAD=1` in Clipify's local `.env`. Set `CLIPIFY_LIVE_YOUTUBE_PRIVACY` to `private` (the default), `unlisted`, or `public`.
-4. Restart Clipify, open Live Studio, and connect a stream. Watch the Live Studio console for upload results and verify the first private upload in YouTube Studio.
+3. Set `CLIPIFY_LIVE_YOUTUBE_AUTO_UPLOAD=1` in Clipify's local `.env`. New uploads default to `public`. To override the default, set `CLIPIFY_LIVE_YOUTUBE_PRIVACY` to `private` or `unlisted`.
+4. Restart Clipify, open Live Studio, and connect a stream. Watch the Live Studio console for upload results and verify the first upload and its visibility in YouTube Studio.
 
 OAuth credentials are saved in the git-ignored `settings/social_credentials.json`. Keep the client JSON and this file private. Clips created before enabling the uploader stay local. Queued clips and in-progress upload sessions resume when you reopen Live Studio. Clipify checks the saved YouTube session before sending more video. If YouTube has expired the session or an upload was interrupted on an older build, check YouTube Studio before manually uploading the saved MP4.
 

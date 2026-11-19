@@ -94,7 +94,7 @@ class LiveStudioManager:
         self.log_activity("Live Studio manager initialized. System ready.", "system")
         self.youtube_uploads = None
         if os.getenv("CLIPIFY_LIVE_YOUTUBE_AUTO_UPLOAD", "").strip() == "1":
-            privacy = os.getenv("CLIPIFY_LIVE_YOUTUBE_PRIVACY", "private").strip().lower()
+            privacy = os.getenv("CLIPIFY_LIVE_YOUTUBE_PRIVACY", "public").strip().lower()
             if privacy in {"private", "unlisted", "public"}:
                 try:
                     self.youtube_uploads = LiveYouTubeUploads(self.clips_dir, privacy, self.log_activity)
