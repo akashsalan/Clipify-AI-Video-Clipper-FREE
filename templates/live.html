@@ -6,7 +6,7 @@
 <title>Clipify AI · Live Studio</title>
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='icon.png', v='20261018-3') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20261118-4') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='live.css', v='20261118-4') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='live.css', v='20261119-1') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='tour.css', v='20261118-1') }}">
 </head>
 <body class="tweak-theme">
@@ -247,23 +247,9 @@
           </div>
         </div>
       </section>
-
-      <!-- Real-time Speech Transcription Feed -->
-      <section class="panel transcript-panel">
-        <div class="section-head">
-          <div>
-            <span class="kicker">LIVE TRANSCRIPTION</span>
-            <h2>Speech Feed (WhisperX)</h2>
-          </div>
-          <span class="hint" id="transcriptionStatus">Listening...</span>
-        </div>
-        <div class="live-transcript-feed" id="transcriptFeed">
-          <div class="empty-feed">Speech will transcribe here in real-time as the stream plays...</div>
-        </div>
-      </section>
     </div>
 
-    <!-- RIGHT: CLIPPING PREFERENCES & GENERATED CLIPS -->
+    <!-- RIGHT: CLIPPING PREFERENCES & LIVE TRANSCRIPTION -->
     <div class="live-right">
       <!-- Collapsible Clipping Preferences -->
       <details class="clipping-prefs-details" open>
@@ -511,100 +497,125 @@
         </div>
       </details>
 
-      <!-- Generated Clips Gallery -->
-      <section class="panel clips-gallery-panel">
+      <!-- Real-time Speech Transcription Feed (in right column beneath preferences) -->
+      <section class="panel transcript-panel">
         <div class="section-head">
           <div>
-            <span class="kicker">EXPORT READY</span>
-            <h2>Live Clips (<span id="clipsCount">0</span>)</h2>
+            <span class="kicker">LIVE TRANSCRIPTION</span>
+            <h2>Speech Feed (WhisperX)</h2>
           </div>
-          <div class="gallery-head-actions">
-            <button class="primary rank-ai-btn" id="btnRankClipsAi" type="button" title="Use Ollama AI to evaluate viral hooks and rank the top 10 clips">
-              <span class="sparkle-icon">✨</span>
-              <span>RANK CLIPS AI</span>
-            </button>
-            <button class="ghost mini-btn" id="btnRefreshClips" type="button">↻ Refresh</button>
-          </div>
+          <span class="hint" id="transcriptionStatus">Listening...</span>
         </div>
-
-        <!-- Clips Batch Selection & Management Toolbar -->
-        <div class="clips-batch-toolbar" id="clipsBatchToolbar">
-          <div class="batch-left">
-            <label class="select-all-label">
-              <input type="checkbox" id="chkSelectAllClips">
-              <span>Select All</span>
-            </label>
-            <span class="selected-counter" id="selectedClipsCounter">0 selected</span>
-          </div>
-          <div class="batch-right">
-            <button type="button" class="danger-btn mini-btn" id="btnDeleteSelectedClips" disabled>
-              <span>🗑️ Delete Selected</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- AI Clip Ranking Live Process Console -->
-        <div class="ranking-console-panel" id="rankingConsolePanel" style="display:none;">
-          <div class="ranking-console-header">
-            <div class="terminal-dots">
-              <span class="t-dot t-red"></span>
-              <span class="t-dot t-yellow"></span>
-              <span class="t-dot t-green"></span>
-            </div>
-            <div class="console-title-wrap">
-              <span class="terminal-prompt-icon">&gt;_</span>
-              <b>AI VIRAL HOOK RANKING TERMINAL</b>
-              <span class="status-chip ranking-status-chip" id="rankingStatusBadge">Idle</span>
-            </div>
-            <button type="button" class="console-clear-btn" id="btnCloseRankingConsole">✕ Close</button>
-          </div>
-          <div class="ranking-console-body" id="rankingConsoleBody">
-            <div class="console-line system"><span class="log-time">[SYSTEM]</span> Ready. Click RANK CLIPS AI to score and order highlights.</div>
-          </div>
-        </div>
-
-        <div class="live-clips-grid" id="liveClipsGrid">
-          <div class="empty-clips" id="emptyClipsMsg">
-            <div class="empty-icon">
-              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5">
-                <circle cx="6" cy="6" r="3"/>
-                <circle cx="6" cy="18" r="3"/>
-                <line x1="20" y1="4" x2="8.12" y2="15.88"/>
-                <line x1="14.47" y1="14.48" x2="20" y2="20"/>
-                <line x1="8.12" y1="8.12" x2="12" y2="12"/>
-              </svg>
-            </div>
-            <b>No clips generated yet</b>
-            <p>Clips will appear here automatically as highlights are detected, or click <b>Instant Clip</b> anytime.</p>
-          </div>
-        </div>
-
-        <!-- DEDICATED AI TOP RANKED HIGHLIGHTS BOX -->
-        <div class="ranked-clips-section" id="rankedClipsSection" style="display:none;">
-          <div class="ranked-section-header">
-            <div>
-              <div class="ranked-header-badge">
-                <span class="trophy-icon">🏆</span>
-                <span>AI TOP RANKED HIGHLIGHTS (TOP 10)</span>
-              </div>
-              <p class="ranked-header-sub">Ollama AI predicted virality, hook retention score & dynamic ranking</p>
-            </div>
-            <div class="ranked-batch-actions">
-              <label class="select-all-label">
-                <input type="checkbox" id="chkSelectAllRanked">
-                <span>Select All Ranked</span>
-              </label>
-              <button type="button" class="danger-btn mini-btn" id="btnDeleteSelectedRanked" disabled>
-                <span>🗑️ Delete Selected</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="ranked-clips-grid" id="rankedClipsGrid">
-            <!-- Dynamically populated ranked clips cards -->
-          </div>
+        <div class="live-transcript-feed" id="transcriptFeed">
+          <div class="empty-feed">Speech will transcribe here in real-time as the stream plays...</div>
         </div>
       </section>
+    </div> <!-- end live-right -->
+  </div> <!-- end live-grid -->
+
+  <!-- Generated Clips Gallery (Full-Width Bottom Section) -->
+  <section class="panel clips-gallery-panel full-width-gallery">
+    <div class="section-head">
+      <div>
+        <span class="kicker">EXPORT READY</span>
+        <h2>Live Clips (<span id="clipsCount">0</span>)</h2>
+      </div>
+      <div class="gallery-head-actions">
+        <div class="shelf-scroll-controls">
+          <button type="button" class="shelf-nav-btn" id="btnScrollClipsLeft" title="Scroll clips left">‹</button>
+          <button type="button" class="shelf-nav-btn" id="btnScrollClipsRight" title="Scroll clips right">›</button>
+        </div>
+        <button class="primary rank-ai-btn" id="btnRankClipsAi" type="button" title="Use Ollama AI to evaluate viral hooks and rank the top 10 clips">
+          <span class="sparkle-icon">✨</span>
+          <span>RANK CLIPS AI</span>
+        </button>
+        <button class="ghost mini-btn" id="btnRefreshClips" type="button">↻ Refresh</button>
+      </div>
+    </div>
+
+    <!-- Clips Batch Selection & Management Toolbar -->
+    <div class="clips-batch-toolbar" id="clipsBatchToolbar">
+      <div class="batch-left">
+        <label class="select-all-label">
+          <input type="checkbox" id="chkSelectAllClips">
+          <span>Select All</span>
+        </label>
+        <span class="selected-counter" id="selectedClipsCounter">0 selected</span>
+      </div>
+      <div class="batch-right">
+        <button type="button" class="danger-btn mini-btn" id="btnDeleteSelectedClips" disabled>
+          <span>🗑️ Delete Selected</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- AI Clip Ranking Live Process Console -->
+    <div class="ranking-console-panel" id="rankingConsolePanel" style="display:none;">
+      <div class="ranking-console-header">
+        <div class="terminal-dots">
+          <span class="t-dot t-red"></span>
+          <span class="t-dot t-yellow"></span>
+          <span class="t-dot t-green"></span>
+        </div>
+        <div class="console-title-wrap">
+          <span class="terminal-prompt-icon">&gt;_</span>
+          <b>AI VIRAL HOOK RANKING TERMINAL</b>
+          <span class="status-chip ranking-status-chip" id="rankingStatusBadge">Idle</span>
+        </div>
+        <button type="button" class="console-clear-btn" id="btnCloseRankingConsole">✕ Close</button>
+      </div>
+      <div class="ranking-console-body" id="rankingConsoleBody">
+        <div class="console-line system"><span class="log-time">[SYSTEM]</span> Ready. Click RANK CLIPS AI to score and order highlights.</div>
+      </div>
+    </div>
+
+    <!-- Sideways Horizontal Scrolling Live Clips Shelf -->
+    <div class="live-clips-grid" id="liveClipsGrid">
+      <div class="empty-clips" id="emptyClipsMsg">
+        <div class="empty-icon">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="6" cy="6" r="3"/>
+            <circle cx="6" cy="18" r="3"/>
+            <line x1="20" y1="4" x2="8.12" y2="15.88"/>
+            <line x1="14.47" y1="14.48" x2="20" y2="20"/>
+            <line x1="8.12" y1="8.12" x2="12" y2="12"/>
+          </svg>
+        </div>
+        <b>No clips generated yet</b>
+        <p>Clips will appear here automatically as highlights are detected, or click <b>Instant Clip</b> anytime.</p>
+      </div>
+    </div>
+
+    <!-- DEDICATED AI TOP RANKED HIGHLIGHTS BOX (Sideways Horizontal Carousel) -->
+    <div class="ranked-clips-section" id="rankedClipsSection" style="display:none;">
+      <div class="ranked-section-header">
+        <div>
+          <div class="ranked-header-badge">
+            <span class="trophy-icon">🏆</span>
+            <span>AI TOP RANKED HIGHLIGHTS (TOP 10)</span>
+          </div>
+          <p class="ranked-header-sub">Ollama AI predicted virality, hook retention score & dynamic ranking</p>
+        </div>
+        <div class="ranked-batch-actions">
+          <div class="shelf-scroll-controls">
+            <button type="button" class="shelf-nav-btn" id="btnScrollRankedLeft" title="Scroll ranked clips left">‹</button>
+            <button type="button" class="shelf-nav-btn" id="btnScrollRankedRight" title="Scroll ranked clips right">›</button>
+          </div>
+          <label class="select-all-label">
+            <input type="checkbox" id="chkSelectAllRanked">
+            <span>Select All Ranked</span>
+          </label>
+          <button type="button" class="danger-btn mini-btn" id="btnDeleteSelectedRanked" disabled>
+            <span>🗑️ Delete Selected</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="ranked-clips-grid" id="rankedClipsGrid">
+        <!-- Dynamically populated ranked clips cards -->
+      </div>
+    </div>
+  </section>
 
 <!-- Video Preview Modal -->
 <div class="modal-overlay" id="clipPreviewModal" style="display:none;">
@@ -703,7 +714,7 @@
   </div>
 </div>
 
-<script src="{{ url_for('static', filename='live.js', v='20261118-6') }}"></script>
+<script src="{{ url_for('static', filename='live.js', v='20261119-1') }}"></script>
 <script src="{{ url_for('static', filename='tour.js', v='20261118-1') }}"></script>
 </body>
 </html>

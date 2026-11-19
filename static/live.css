@@ -266,17 +266,17 @@
   line-height: 1.45;
 }
 
-/* Live Studio Workspace Grid - Expanded Screen Layout */
+/* Live Studio Workspace Grid - Balanced Top Layout */
 .live-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.75fr) minmax(360px, 1fr);
+  grid-template-columns: minmax(0, 1.45fr) minmax(380px, 1fr);
   gap: 24px;
   align-items: start;
 }
 
 @media (min-width: 1440px) {
   .live-grid {
-    grid-template-columns: minmax(0, 1.85fr) minmax(380px, 1fr);
+    grid-template-columns: minmax(0, 1.55fr) minmax(400px, 1fr);
   }
 }
 
@@ -1005,15 +1005,81 @@ input[type="range"] {
   padding: 20px;
 }
 
+/* Generated Clips Gallery Panel (Full-Width Bottom Shelf) */
+.full-width-gallery {
+  margin-top: 24px;
+  width: 100%;
+}
+
+.shelf-scroll-controls {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  margin-right: 6px;
+}
+
+.shelf-nav-btn {
+  background: #18181b;
+  border: 1px solid #27272a;
+  color: #d4d4d8;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  line-height: 1;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.shelf-nav-btn:hover {
+  background: #27272a;
+  color: #ffffff;
+  border-color: #3f3f46;
+  transform: scale(1.05);
+}
+
+.shelf-nav-btn:active {
+  transform: scale(0.95);
+}
+
 .live-clips-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
   gap: 14px;
-  min-height: 200px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 8px 4px 16px 4px;
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
+  min-height: 280px;
+}
+
+.live-clips-grid::-webkit-scrollbar {
+  height: 6px;
+}
+
+.live-clips-grid::-webkit-scrollbar-track {
+  background: #111218;
+  border-radius: 3px;
+}
+
+.live-clips-grid::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 3px;
+}
+
+.live-clips-grid::-webkit-scrollbar-thumb:hover {
+  background: #71717a;
 }
 
 .empty-clips {
-  grid-column: 1 / -1;
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1043,18 +1109,24 @@ input[type="range"] {
 }
 
 .live-clip-card {
-  background: #09090b;
-  border: 1px solid #27272a;
+  flex: 0 0 168px;
+  width: 168px;
+  max-width: 168px;
+  scroll-snap-align: start;
+  position: relative;
+  background: #101116;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  transition: transform 0.16s ease, border-color 0.16s ease;
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
 .live-clip-card:hover {
   transform: translateY(-2px);
-  border-color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
 }
 
 .clip-thumb-wrap {
@@ -1141,26 +1213,36 @@ input[type="range"] {
 }
 
 .clip-card-actions {
-  display: flex;
-  gap: 5px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 26px;
+  gap: 4px;
   align-items: center;
-  flex-wrap: nowrap;
+  margin-top: auto;
+  width: 100%;
 }
 
 .clip-card-actions button, .clip-card-actions a {
   text-align: center;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
+  font-weight: 600;
   padding: 5px 6px;
   border-radius: 6px;
   white-space: nowrap;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .clip-card-actions .play-clip-btn {
-  flex: 1.2;
+  grid-column: 1 / -1;
+  width: 100%;
+  font-size: 0.74rem;
+  padding: 6px 8px;
+  margin-bottom: 2px;
 }
 
 .clip-card-actions .edit-clip-btn {
-  flex: 1;
   border: 1px solid #3f3f46;
   color: #e4e4e7;
   background: rgba(255, 255, 255, 0.05);
@@ -1173,18 +1255,27 @@ input[type="range"] {
 }
 
 .clip-card-actions .save-clip-btn {
-  flex: 1;
+  border: 1px solid #27272a;
+  color: #d4d4d8;
+  background: #18181b;
+}
+
+.clip-card-actions .save-clip-btn:hover {
+  border-color: #3f3f46;
+  color: #ffffff;
 }
 
 .clip-card-actions .delete-clip-btn {
-  flex: 0 0 28px;
   padding: 5px 0;
   color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: rgba(239, 68, 68, 0.06);
 }
 
 .clip-card-actions .delete-clip-btn:hover {
-  background: rgba(239, 68, 68, 0.15);
+  background: rgba(239, 68, 68, 0.2);
   color: #f87171;
+  border-color: rgba(239, 68, 68, 0.4);
 }
 
 /* Modal */

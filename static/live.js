@@ -1188,6 +1188,45 @@
         }
       });
     }
+
+    // Horizontal Shelf Navigation Controls
+    const btnScrollClipsLeft = document.getElementById('btnScrollClipsLeft');
+    const btnScrollClipsRight = document.getElementById('btnScrollClipsRight');
+    if (btnScrollClipsLeft && liveClipsGrid) {
+      btnScrollClipsLeft.addEventListener('click', () => {
+        liveClipsGrid.scrollBy({ left: -360, behavior: 'smooth' });
+      });
+    }
+    if (btnScrollClipsRight && liveClipsGrid) {
+      btnScrollClipsRight.addEventListener('click', () => {
+        liveClipsGrid.scrollBy({ left: 360, behavior: 'smooth' });
+      });
+    }
+
+    const btnScrollRankedLeft = document.getElementById('btnScrollRankedLeft');
+    const btnScrollRankedRight = document.getElementById('btnScrollRankedRight');
+    if (btnScrollRankedLeft && rankedClipsGrid) {
+      btnScrollRankedLeft.addEventListener('click', () => {
+        rankedClipsGrid.scrollBy({ left: -360, behavior: 'smooth' });
+      });
+    }
+    if (btnScrollRankedRight && rankedClipsGrid) {
+      btnScrollRankedRight.addEventListener('click', () => {
+        rankedClipsGrid.scrollBy({ left: 360, behavior: 'smooth' });
+      });
+    }
+
+    // Mouse wheel horizontal scroll on sideways shelves
+    [liveClipsGrid, rankedClipsGrid].forEach(el => {
+      if (el) {
+        el.addEventListener('wheel', (e) => {
+          if (e.deltaY !== 0 && !e.shiftKey) {
+            e.preventDefault();
+            el.scrollBy({ left: e.deltaY * 1.5, behavior: 'smooth' });
+          }
+        }, { passive: false });
+      }
+    });
   }
 
   // ==========================================================================

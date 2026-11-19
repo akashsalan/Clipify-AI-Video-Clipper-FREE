@@ -44,15 +44,12 @@ Everything runs on your computer—preserving **100% privacy**, with **zero mont
 
 | Package | Version | Size | Checksum (SHA-256) | Download |
 | :--- | :---: | :---: | :--- | :--- |
-| **`Clipify.AI.Setup.3.7.0.exe`** | `v3.7.0` | **347.7 MB** | `6EAD269E5F545F591C7AF6355E8FAF8B372FD110017DDA42947E5D7882BBED00` | [**Download v3.7.0**](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.7.0/Clipify.AI.Setup.3.7.0.exe) |
-| **`Clipify Setup 3.7.0.exe`** | `v3.7.0` | **347.7 MB** | `6EAD269E5F545F591C7AF6355E8FAF8B372FD110017DDA42947E5D7882BBED00` | [**Download v3.7.0**](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.7.0/Clipify%20Setup%203.7.0.exe) |
-| **`Clipify.AI.Setup.exe`** | `v3.7.0` | **347.7 MB** | `6EAD269E5F545F591C7AF6355E8FAF8B372FD110017DDA42947E5D7882BBED00` | [**Download v3.7.0**](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.7.0/Clipify.AI.Setup.exe) |
-| **`Clipify.Setup.exe`** | `v3.7.0` | **347.7 MB** | `6EAD269E5F545F591C7AF6355E8FAF8B372FD110017DDA42947E5D7882BBED00` | [**Download v3.7.0**](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.7.0/Clipify.Setup.exe) |
+| **`Clipify.AI.Setup.3.7.0.exe`** | `v3.7.0` | **347.7 MB** | `38EDF9DCBBC2D0AD66869C85FEE900C83DCFCEEAAF6BD7CB98D54A71770C8BD7` | [**Download v3.7.0 Setup (Windows x64)**](https://github.com/sherlock-dev-ai/Clipify-AI-Video-Clipper-FREE/releases/download/v3.7.0/Clipify.AI.Setup.3.7.0.exe) |
 
 #### Verify installer integrity in PowerShell:
 ```powershell
 Get-FileHash ".\Clipify.AI.Setup.3.7.0.exe" -Algorithm SHA256
-# Compare output with: C59E33B767D66D33878DCA419527463B7CE57BA59314F9A3EF604BFFA3D76B14
+# Compare output with: 38EDF9DCBBC2D0AD66869C85FEE900C83DCFCEEAAF6BD7CB98D54A71770C8BD7
 ```
 
 ---
@@ -97,7 +94,7 @@ Get-FileHash ".\Clipify.AI.Setup.3.7.0.exe" -Algorithm SHA256
 
 ### 🔴 Live Studio: Real-Time LIVE Stream Clipping & Export-Ready Shorts
 <p align="center">
-  <img src="docs/screenshots/live_studio_clips.jpg" alt="Clipify AI Live Stream Clipping — Export Ready Live Shorts" width="100%">
+  <img src="docs/screenshots/live_studio_stream.jpg" alt="Clipify AI Live Stream Clipping — Live Stream Ingestion & Export Ready Live Shorts" width="100%">
 </p>
 
 | 🎬 Short Studio Dashboard | 🎙️ Narrate Studio (Faceless Shorts) |
